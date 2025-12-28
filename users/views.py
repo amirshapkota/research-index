@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
+from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 from .serializers import (
     AuthorRegistrationSerializer, 
     InstitutionRegistrationSerializer,
@@ -16,12 +17,42 @@ from .models import CustomUser, Author, Institution
 
 class AuthorRegistrationView(generics.CreateAPIView):
     """
-    API endpoint for author registration
+    Register a new author account with detailed profile information.
+    
+    Creates both a user account and an associated author profile.
+    Returns JWT tokens for immediate authentication.
     """
     queryset = CustomUser.objects.all()
     serializer_class = AuthorRegistrationSerializer
     permission_classes = [AllowAny]
     
+    @extend_schema(
+        tags=['Registration'],
+        summary='Register as Author',
+        description='Create a new author account with profile information including title, full name, institute, and designation.',
+        examples=[
+            OpenApiExample(
+                'Author Registration Example',
+                value={
+                    'email': 'john.doe@university.edu',
+                    'password': 'SecurePass123!',
+                    'confirm_password': 'SecurePass123!',
+                    'title': 'Dr.',
+                    'full_name': 'John Doe',
+                    'institute': 'MIT',
+                    'designation': 'Associate Professor'
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: OpenApiResponse(
+                description='Author registered successfully',
+                response=AuthorRegistrationSerializer,
+            ),
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -45,11 +76,39 @@ class AuthorRegistrationView(generics.CreateAPIView):
 
 class InstitutionRegistrationView(generics.CreateAPIView):
     """
-    API endpoint for institution registration
+    Register a new institution account.
+    
+    Creates both a user account and an associated institution profile.
+    Returns JWT tokens for immediate authentication.
     """
     queryset = CustomUser.objects.all()
     serializer_class = InstitutionRegistrationSerializer
     permission_classes = [AllowAny]
+    
+    @extend_schema(
+        tags=['Registration'],
+        summary='Register as Institution',
+        description='Create a new institution account with basic organization information.',
+        examples=[
+            OpenApiExample(
+                'Institution Registration Example',
+                value={
+                    'email': 'admin@university.edu',
+                    'password': 'SecurePass123!',
+                    'confirm_password': 'SecurePass123!',
+                    'institution_name': 'Harvard University'
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: OpenApiResponse(
+                description='Institution registered successfully',
+                response=InstitutionRegistrationSerializer,
+            ),
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -74,10 +133,34 @@ class InstitutionRegistrationView(generics.CreateAPIView):
 
 class LoginView(APIView):
     """
-    API endpoint for login (both authors and institutions)
+    Unified login endpoint for both authors and institutions.
+    
+    Authenticate with email and password, returns JWT tokens and user profile.
     """
     permission_classes = [AllowAny]
     
+    @extend_schema(
+        tags=['Authentication'],
+        summary='Login',
+        description='Login for both authors and institutions using email and password. Returns JWT tokens and user profile data.',
+        request=LoginSerializer,
+        examples=[
+            OpenApiExample(
+                'Login Example',
+                value={
+                    'email': 'user@example.com',
+                    'password': 'SecurePass123!'
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='Login successful',
+            ),
+            401: OpenApiResponse(description='Invalid credentials'),
+        }
+    )
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -123,10 +206,24 @@ class LoginView(APIView):
 
 class AuthorProfileView(APIView):
     """
-    API endpoint to get author profile details
+    Get the authenticated author's profile information.
+    
+    Requires valid JWT token in Authorization header.
     """
     permission_classes = [IsAuthenticated]
     
+    @extend_schema(
+        tags=['Profile'],
+        summary='Get Author Profile',
+        description='Retrieve the profile information for the authenticated author.',
+        responses={
+            200: OpenApiResponse(
+                description='Author profile retrieved successfully',
+                response=AuthorProfileSerializer,
+            ),
+            404: OpenApiResponse(description='Author profile not found'),
+        }
+    )
     def get(self, request):
         try:
             author = Author.objects.get(user=request.user)
@@ -140,10 +237,24 @@ class AuthorProfileView(APIView):
 
 class InstitutionProfileView(APIView):
     """
-    API endpoint to get institution profile details
+    Get the authenticated institution's profile information.
+    
+    Requires valid JWT token in Authorization header.
     """
     permission_classes = [IsAuthenticated]
     
+    @extend_schema(
+        tags=['Profile'],
+        summary='Get Institution Profile',
+        description='Retrieve the profile information for the authenticated institution.',
+        responses={
+            200: OpenApiResponse(
+                description='Institution profile retrieved successfully',
+                response=InstitutionProfileSerializer,
+            ),
+            404: OpenApiResponse(description='Institution profile not found'),
+        }
+    )
     def get(self, request):
         try:
             institution = Institution.objects.get(user=request.user)

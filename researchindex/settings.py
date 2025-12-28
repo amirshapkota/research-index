@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'users',
     'rest_framework',
+    'drf_spectacular',
 ]
 
 MIDDLEWARE = [
@@ -146,6 +147,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 # Simple JWT Configuration
@@ -169,5 +171,34 @@ SIMPLE_JWT = {
     
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
+}
+
+# DRF Spectacular Configuration
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Research Index API',
+    'DESCRIPTION': 'Authentication API for Research Index with Author and Institution user types',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SCHEMA_PATH_PREFIX': '/api/',
+    
+    # Swagger UI settings
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'persistAuthorization': True,
+        'displayOperationId': True,
+    },
+    
+    # Security schemes
+    'APPEND_COMPONENTS': {
+        'securitySchemes': {
+            'Bearer': {
+                'type': 'http',
+                'scheme': 'bearer',
+                'bearerFormat': 'JWT',
+            }
+        }
+    },
+    'SECURITY': [{'Bearer': []}],
 }
 

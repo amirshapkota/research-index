@@ -172,3 +172,78 @@ class InstitutionProfileSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.logo.url)
             return obj.logo.url
         return None
+
+
+# Account Settings Serializers
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(required=True, write_only=True, validators=[validate_password])
+    confirm_new_password = serializers.CharField(required=True, write_only=True)
+    
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['confirm_new_password']:
+            raise serializers.ValidationError({"confirm_new_password": "New password fields didn't match."})
+        return attrs
+    
+    def validate_old_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Old password is incorrect.")
+        return value
+
+
+class UpdateEmailSerializer(serializers.Serializer):
+    new_email = serializers.EmailField(required=True)
+    password = serializers.CharField(required=True, write_only=True)
+    
+    def validate_new_email(self, value):
+        if CustomUser.objects.filter(email=value).exists():
+            raise serializers.ValidationError("This email is already in use.")
+        return value
+    
+    def validate_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Password is incorrect.")
+        return value
+
+
+class AccountStatusSerializer(serializers.Serializer):
+    is_active = serializers.BooleanField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    user_type = serializers.CharField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+
+class DeactivateAccountSerializer(serializers.Serializer):
+    password = serializers.CharField(required=True, write_only=True)
+    confirm_deactivation = serializers.BooleanField(required=True)
+    
+    def validate_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Password is incorrect.")
+        return value
+    
+    def validate_confirm_deactivation(self, value):
+        if not value:
+            raise serializers.ValidationError("You must confirm account deactivation.")
+        return value
+
+
+class DeleteAccountSerializer(serializers.Serializer):
+    password = serializers.CharField(required=True, write_only=True)
+    confirm_deletion = serializers.CharField(required=True, write_only=True)
+    
+    def validate_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Password is incorrect.")
+        return value
+    
+    def validate_confirm_deletion(self, value):
+        if value != "DELETE MY ACCOUNT":
+            raise serializers.ValidationError('You must type "DELETE MY ACCOUNT" to confirm deletion.')
+        return value

@@ -5,7 +5,12 @@ from .views import (
     InstitutionRegistrationView,
     LoginView,
     AuthorProfileView,
-    InstitutionProfileView
+    InstitutionProfileView,
+    ChangePasswordView,
+    UpdateEmailView,
+    AccountStatusView,
+    DeactivateAccountView,
+    DeleteAccountView
 )
 
 urlpatterns = [
@@ -22,4 +27,11 @@ urlpatterns = [
     # Profile endpoints
     path('profile/author/', AuthorProfileView.as_view(), name='author-profile'),
     path('profile/institution/', InstitutionProfileView.as_view(), name='institution-profile'),
+    
+    # Account Settings endpoints
+    path('settings/change-password/', ChangePasswordView.as_view(), name='change-password'),
+    path('settings/update-email/', UpdateEmailView.as_view(), name='update-email'),
+    path('settings/account-status/', AccountStatusView.as_view(), name='account-status'),
+    path('settings/deactivate-account/', DeactivateAccountView.as_view(), name='deactivate-account'),
+    path('settings/delete-account/', DeleteAccountView.as_view(), name='delete-account'),
 ]

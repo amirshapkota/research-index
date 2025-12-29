@@ -10,7 +10,12 @@ from .serializers import (
     InstitutionRegistrationSerializer,
     LoginSerializer,
     AuthorProfileSerializer,
-    InstitutionProfileSerializer
+    InstitutionProfileSerializer,
+    ChangePasswordSerializer,
+    UpdateEmailSerializer,
+    AccountStatusSerializer,
+    DeactivateAccountSerializer,
+    DeleteAccountSerializer
 )
 from .models import CustomUser, Author, Institution
 
@@ -384,3 +389,209 @@ class InstitutionProfileView(APIView):
             return Response({
                 'error': 'Institution profile not found'
             }, status=status.HTTP_404_NOT_FOUND)
+
+
+# Account Settings Views
+
+class ChangePasswordView(APIView):
+    """
+    Change password for authenticated users (both authors and institutions).
+    
+    Requires old password for verification and new password with confirmation.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Account Settings'],
+        summary='Change Password',
+        description='Change account password. Requires old password verification.',
+        request=ChangePasswordSerializer,
+        examples=[
+            OpenApiExample(
+                'Change Password Example',
+                value={
+                    'old_password': 'OldPass123!',
+                    'new_password': 'NewSecurePass456!',
+                    'confirm_new_password': 'NewSecurePass456!'
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            200: OpenApiResponse(description='Password changed successfully'),
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        
+        # Set new password
+        request.user.set_password(serializer.validated_data['new_password'])
+        request.user.save()
+        
+        return Response({
+            'message': 'Password changed successfully. Please login again with your new password.'
+        }, status=status.HTTP_200_OK)
+
+
+class UpdateEmailView(APIView):
+    """
+    Update email address for authenticated users.
+    
+    Requires password verification and new email must be unique.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Account Settings'],
+        summary='Update Email',
+        description='Update account email address. Requires password verification.',
+        request=UpdateEmailSerializer,
+        examples=[
+            OpenApiExample(
+                'Update Email Example',
+                value={
+                    'new_email': 'newemail@example.com',
+                    'password': 'CurrentPass123!'
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            200: OpenApiResponse(description='Email updated successfully'),
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
+    def post(self, request):
+        serializer = UpdateEmailSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        
+        # Update email
+        old_email = request.user.email
+        request.user.email = serializer.validated_data['new_email']
+        request.user.save()
+        
+        return Response({
+            'message': 'Email updated successfully',
+            'old_email': old_email,
+            'new_email': request.user.email
+        }, status=status.HTTP_200_OK)
+
+
+class AccountStatusView(APIView):
+    """
+    Get current account status and information.
+    
+    Returns account details including creation date, status, and user type.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Account Settings'],
+        summary='Get Account Status',
+        description='Retrieve current account status and information.',
+        responses={
+            200: OpenApiResponse(
+                description='Account status retrieved successfully',
+                response=AccountStatusSerializer,
+            ),
+        }
+    )
+    def get(self, request):
+        data = {
+            'is_active': request.user.is_active,
+            'email': request.user.email,
+            'user_type': request.user.user_type,
+            'created_at': request.user.created_at,
+            'updated_at': request.user.updated_at,
+        }
+        
+        serializer = AccountStatusSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class DeactivateAccountView(APIView):
+    """
+    Deactivate account (can be reactivated by admin).
+    
+    Requires password verification and confirmation.
+    Sets is_active to False, user can't login but data is preserved.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Account Settings'],
+        summary='Deactivate Account',
+        description='Deactivate your account. Account can be reactivated by contacting support.',
+        request=DeactivateAccountSerializer,
+        examples=[
+            OpenApiExample(
+                'Deactivate Account Example',
+                value={
+                    'password': 'CurrentPass123!',
+                    'confirm_deactivation': True
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            200: OpenApiResponse(description='Account deactivated successfully'),
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
+    def post(self, request):
+        serializer = DeactivateAccountSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        
+        # Deactivate account
+        request.user.is_active = False
+        request.user.save()
+        
+        return Response({
+            'message': 'Account deactivated successfully. Contact support to reactivate your account.'
+        }, status=status.HTTP_200_OK)
+
+
+class DeleteAccountView(APIView):
+    """
+    Permanently delete account and all associated data.
+    
+    WARNING: This action cannot be undone!
+    Requires password and explicit confirmation text.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Account Settings'],
+        summary='Delete Account Permanently',
+        description='Permanently delete your account and all associated data. This action cannot be undone!',
+        request=DeleteAccountSerializer,
+        examples=[
+            OpenApiExample(
+                'Delete Account Example',
+                value={
+                    'password': 'CurrentPass123!',
+                    'confirm_deletion': 'DELETE MY ACCOUNT'
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            200: OpenApiResponse(description='Account deleted successfully'),
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
+    def post(self, request):
+        serializer = DeleteAccountSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        
+        # Store email for response
+        email = request.user.email
+        
+        # Delete user (will cascade delete profile due to OneToOne relationship)
+        request.user.delete()
+        
+        return Response({
+            'message': f'Account {email} has been permanently deleted. All your data has been removed.'
+        }, status=status.HTTP_200_OK)

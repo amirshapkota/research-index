@@ -1,4 +1,4 @@
-from rest_framework import generics, status
+from rest_framework import generics, status, parsers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -180,13 +180,13 @@ class LoginView(APIView):
             if user.user_type == 'author':
                 try:
                     author = Author.objects.get(user=user)
-                    profile_data = AuthorProfileSerializer(author).data
+                    profile_data = AuthorProfileSerializer(author, context={'request': request}).data
                 except Author.DoesNotExist:
                     pass
             elif user.user_type == 'institution':
                 try:
                     institution = Institution.objects.get(user=user)
-                    profile_data = InstitutionProfileSerializer(institution).data
+                    profile_data = InstitutionProfileSerializer(institution, context={'request': request}).data
                 except Institution.DoesNotExist:
                     pass
             
@@ -206,16 +206,18 @@ class LoginView(APIView):
 
 class AuthorProfileView(APIView):
     """
-    Get the authenticated author's profile information.
+    Get and update the authenticated author's profile information.
     
-    Requires valid JWT token in Authorization header.
+    Supports GET, PUT, and PATCH methods.
+    Handles file uploads for profile picture and CV.
     """
     permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
     
     @extend_schema(
         tags=['Profile'],
         summary='Get Author Profile',
-        description='Retrieve the profile information for the authenticated author.',
+        description='Retrieve the complete profile information for the authenticated author.',
         responses={
             200: OpenApiResponse(
                 description='Author profile retrieved successfully',
@@ -227,8 +229,66 @@ class AuthorProfileView(APIView):
     def get(self, request):
         try:
             author = Author.objects.get(user=request.user)
-            serializer = AuthorProfileSerializer(author)
+            serializer = AuthorProfileSerializer(author, context={'request': request})
             return Response(serializer.data, status=status.HTTP_200_OK)
+        except Author.DoesNotExist:
+            return Response({
+                'error': 'Author profile not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        tags=['Profile'],
+        summary='Update Author Profile (Full)',
+        description='Update the complete author profile. Supports file uploads for profile_picture and cv.',
+        request=AuthorProfileSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Author profile updated successfully',
+                response=AuthorProfileSerializer,
+            ),
+            404: OpenApiResponse(description='Author profile not found'),
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
+    def put(self, request):
+        try:
+            author = Author.objects.get(user=request.user)
+            serializer = AuthorProfileSerializer(author, data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response({
+                'message': 'Profile updated successfully',
+                'profile': serializer.data
+            }, status=status.HTTP_200_OK)
+        except Author.DoesNotExist:
+            return Response({
+                'error': 'Author profile not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        tags=['Profile'],
+        summary='Update Author Profile (Partial)',
+        description='Partially update author profile. Only provided fields will be updated. Supports file uploads.',
+        request=AuthorProfileSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Author profile updated successfully',
+                response=AuthorProfileSerializer,
+            ),
+            404: OpenApiResponse(description='Author profile not found'),
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
+    def patch(self, request):
+        try:
+            author = Author.objects.get(user=request.user)
+            serializer = AuthorProfileSerializer(author, data=request.data, partial=True, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response({
+                'message': 'Profile updated successfully',
+                'profile': serializer.data
+            }, status=status.HTTP_200_OK)
         except Author.DoesNotExist:
             return Response({
                 'error': 'Author profile not found'
@@ -237,16 +297,18 @@ class AuthorProfileView(APIView):
 
 class InstitutionProfileView(APIView):
     """
-    Get the authenticated institution's profile information.
+    Get and update the authenticated institution's profile information.
     
-    Requires valid JWT token in Authorization header.
+    Supports GET, PUT, and PATCH methods.
+    Handles file upload for logo.
     """
     permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
     
     @extend_schema(
         tags=['Profile'],
         summary='Get Institution Profile',
-        description='Retrieve the profile information for the authenticated institution.',
+        description='Retrieve the complete profile information for the authenticated institution.',
         responses={
             200: OpenApiResponse(
                 description='Institution profile retrieved successfully',
@@ -258,8 +320,66 @@ class InstitutionProfileView(APIView):
     def get(self, request):
         try:
             institution = Institution.objects.get(user=request.user)
-            serializer = InstitutionProfileSerializer(institution)
+            serializer = InstitutionProfileSerializer(institution, context={'request': request})
             return Response(serializer.data, status=status.HTTP_200_OK)
+        except Institution.DoesNotExist:
+            return Response({
+                'error': 'Institution profile not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        tags=['Profile'],
+        summary='Update Institution Profile (Full)',
+        description='Update the complete institution profile. Supports file upload for logo.',
+        request=InstitutionProfileSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Institution profile updated successfully',
+                response=InstitutionProfileSerializer,
+            ),
+            404: OpenApiResponse(description='Institution profile not found'),
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
+    def put(self, request):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            serializer = InstitutionProfileSerializer(institution, data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response({
+                'message': 'Profile updated successfully',
+                'profile': serializer.data
+            }, status=status.HTTP_200_OK)
+        except Institution.DoesNotExist:
+            return Response({
+                'error': 'Institution profile not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        tags=['Profile'],
+        summary='Update Institution Profile (Partial)',
+        description='Partially update institution profile. Only provided fields will be updated. Supports file upload.',
+        request=InstitutionProfileSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Institution profile updated successfully',
+                response=InstitutionProfileSerializer,
+            ),
+            404: OpenApiResponse(description='Institution profile not found'),
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
+    def patch(self, request):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            serializer = InstitutionProfileSerializer(institution, data=request.data, partial=True, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response({
+                'message': 'Profile updated successfully',
+                'profile': serializer.data
+            }, status=status.HTTP_200_OK)
         except Institution.DoesNotExist:
             return Response({
                 'error': 'Institution profile not found'

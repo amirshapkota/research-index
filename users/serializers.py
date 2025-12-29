@@ -90,16 +90,85 @@ class LoginSerializer(serializers.Serializer):
 class AuthorProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     user_type = serializers.CharField(source='user.user_type', read_only=True)
+    profile_picture_url = serializers.SerializerMethodField()
+    cv_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Author
-        fields = ['email', 'user_type', 'title', 'full_name', 'institute', 'designation']
+        fields = [
+            'id',
+            'email',
+            'user_type',
+            'title',
+            'full_name',
+            'institute',
+            'designation',
+            'degree',
+            'gender',
+            'profile_picture',
+            'profile_picture_url',
+            'cv',
+            'cv_url',
+            'bio',
+            'research_interests',
+            'orcid',
+            'google_scholar',
+            'researchgate',
+            'linkedin',
+            'website',
+        ]
+        read_only_fields = ['id', 'email', 'user_type']
+    
+    def get_profile_picture_url(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+    
+    def get_cv_url(self, obj):
+        if obj.cv:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.cv.url)
+            return obj.cv.url
+        return None
 
 
 class InstitutionProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     user_type = serializers.CharField(source='user.user_type', read_only=True)
+    logo_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Institution
-        fields = ['email', 'user_type', 'institution_name']
+        fields = [
+            'id',
+            'email',
+            'user_type',
+            'institution_name',
+            'institution_type',
+            'logo',
+            'logo_url',
+            'description',
+            'address',
+            'city',
+            'state',
+            'country',
+            'postal_code',
+            'phone',
+            'website',
+            'established_year',
+            'research_areas',
+            'total_researchers',
+        ]
+        read_only_fields = ['id', 'email', 'user_type']
+    
+    def get_logo_url(self, obj):
+        if obj.logo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo.url)
+            return obj.logo.url
+        return None

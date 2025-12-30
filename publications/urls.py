@@ -8,6 +8,15 @@ from .views import (
     BulkAddReferencesView,
     RecordPublicationReadView,
     DownloadPublicationView,
+    # Journal views
+    JournalListCreateView,
+    JournalDetailView,
+    JournalStatsView,
+    EditorialBoardListCreateView,
+    # Issue views
+    IssueListCreateView,
+    IssueDetailView,
+    AddArticleToIssueView,
 )
 
 urlpatterns = [
@@ -28,4 +37,21 @@ urlpatterns = [
     # Public endpoints
     path('<int:pk>/read/', RecordPublicationReadView.as_view(), name='record-read'),
     path('<int:pk>/download/', DownloadPublicationView.as_view(), name='download-pdf'),
+    
+    # Journal CRUD
+    path('journals/', JournalListCreateView.as_view(), name='journal-list-create'),
+    path('journals/<int:pk>/', JournalDetailView.as_view(), name='journal-detail'),
+    
+    # Journal Stats
+    path('journals/<int:pk>/stats/', JournalStatsView.as_view(), name='journal-stats'),
+    
+    # Editorial Board
+    path('journals/<int:journal_pk>/editorial-board/', EditorialBoardListCreateView.as_view(), name='editorial-board-list-create'),
+    
+    # Issue CRUD
+    path('journals/<int:journal_pk>/issues/', IssueListCreateView.as_view(), name='issue-list-create'),
+    path('journals/<int:journal_pk>/issues/<int:pk>/', IssueDetailView.as_view(), name='issue-detail'),
+    
+    # Issue Articles
+    path('journals/<int:journal_pk>/issues/<int:issue_pk>/articles/add/', AddArticleToIssueView.as_view(), name='add-article-to-issue'),
 ]

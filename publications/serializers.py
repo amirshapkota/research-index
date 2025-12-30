@@ -1,9 +1,10 @@
 from rest_framework import serializers
 from .models import (
     Publication, MeSHTerm, PublicationStats, 
-    Citation, Reference, LinkOut, PublicationRead
+    Citation, Reference, LinkOut, PublicationRead,
+    Journal, EditorialBoardMember, JournalStats, Issue, IssueArticle
 )
-from users.models import Author
+from users.models import Author, Institution
 
 
 class MeSHTermSerializer(serializers.ModelSerializer):
@@ -274,3 +275,292 @@ class BulkReferencesSerializer(serializers.Serializer):
             references.append(Reference(publication=publication, **ref_data))
         
         return Reference.objects.bulk_create(references)
+
+
+# ==================== JOURNAL SERIALIZERS ====================
+
+class EditorialBoardMemberSerializer(serializers.ModelSerializer):
+    role_display = serializers.CharField(source='get_role_display', read_only=True)
+    photo_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = EditorialBoardMember
+        fields = [
+            'id', 'name', 'role', 'role_display', 'title', 'affiliation',
+            'email', 'bio', 'expertise', 'photo', 'photo_url', 'orcid',
+            'website', 'order', 'is_active'
+        ]
+        read_only_fields = ['id']
+    
+    def get_photo_url(self, obj):
+        if obj.photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.photo.url)
+            return obj.photo.url
+        return None
+
+
+class JournalStatsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JournalStats
+        fields = [
+            'impact_factor', 'cite_score', 'h_index', 'acceptance_rate',
+            'average_review_time', 'total_articles', 'total_issues',
+            'total_citations', 'total_reads', 'recommendations',
+            'social_media_score', 'last_updated'
+        ]
+        read_only_fields = ['last_updated']
+
+
+class JournalListSerializer(serializers.ModelSerializer):
+    """
+    Simplified serializer for listing journals.
+    """
+    institution_name = serializers.CharField(source='institution.institution_name', read_only=True)
+    frequency_display = serializers.CharField(source='get_frequency_display', read_only=True)
+    cover_image_url = serializers.SerializerMethodField()
+    stats = JournalStatsSerializer(read_only=True)
+    editorial_board_count = serializers.SerializerMethodField()
+    issues_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Journal
+        fields = [
+            'id', 'title', 'short_title', 'issn', 'e_issn', 'description',
+            'institution_name', 'publisher_name', 'frequency', 'frequency_display',
+            'established_year', 'is_open_access', 'peer_reviewed', 'is_active',
+            'cover_image_url', 'stats', 'editorial_board_count', 'issues_count',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_cover_image_url(self, obj):
+        if obj.cover_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.cover_image.url)
+            return obj.cover_image.url
+        return None
+    
+    def get_editorial_board_count(self, obj):
+        return obj.editorial_board.filter(is_active=True).count()
+    
+    def get_issues_count(self, obj):
+        return obj.issues.count()
+
+
+class JournalDetailSerializer(serializers.ModelSerializer):
+    """
+    Detailed serializer with all information sections and editorial board.
+    """
+    institution_name = serializers.CharField(source='institution.institution_name', read_only=True)
+    institution_id = serializers.IntegerField(source='institution.id', read_only=True)
+    frequency_display = serializers.CharField(source='get_frequency_display', read_only=True)
+    cover_image_url = serializers.SerializerMethodField()
+    
+    # Nested data
+    editorial_board = EditorialBoardMemberSerializer(many=True, read_only=True)
+    stats = JournalStatsSerializer(read_only=True)
+    
+    class Meta:
+        model = Journal
+        fields = [
+            'id', 'institution_id', 'institution_name', 'title', 'short_title',
+            'issn', 'e_issn', 'description', 'scope', 'cover_image', 'cover_image_url',
+            'publisher_name', 'frequency', 'frequency_display', 'established_year',
+            'language', 'about_journal', 'ethics_policies', 'writing_formatting',
+            'submitting_manuscript', 'help_support', 'contact_email', 'contact_phone',
+            'contact_address', 'website', 'doi_prefix', 'is_active', 'is_open_access',
+            'peer_reviewed', 'created_at', 'updated_at', 'editorial_board', 'stats'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_cover_image_url(self, obj):
+        if obj.cover_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.cover_image.url)
+            return obj.cover_image.url
+        return None
+
+
+class JournalCreateUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating and updating journals.
+    """
+    editorial_board_data = serializers.ListField(
+        child=serializers.DictField(),
+        write_only=True,
+        required=False,
+        help_text="List of editorial board members"
+    )
+    
+    class Meta:
+        model = Journal
+        fields = [
+            'title', 'short_title', 'issn', 'e_issn', 'description', 'scope',
+            'cover_image', 'publisher_name', 'frequency', 'established_year',
+            'language', 'about_journal', 'ethics_policies', 'writing_formatting',
+            'submitting_manuscript', 'help_support', 'contact_email', 'contact_phone',
+            'contact_address', 'website', 'doi_prefix', 'is_active', 'is_open_access',
+            'peer_reviewed', 'editorial_board_data'
+        ]
+    
+    def create(self, validated_data):
+        editorial_board_data = validated_data.pop('editorial_board_data', [])
+        
+        # Get institution from request context
+        request = self.context.get('request')
+        institution = Institution.objects.get(user=request.user)
+        
+        # Create journal
+        journal = Journal.objects.create(institution=institution, **validated_data)
+        
+        # Create JournalStats
+        JournalStats.objects.create(journal=journal)
+        
+        # Create editorial board members
+        for member_data in editorial_board_data:
+            EditorialBoardMember.objects.create(journal=journal, **member_data)
+        
+        return journal
+    
+    def update(self, instance, validated_data):
+        editorial_board_data = validated_data.pop('editorial_board_data', None)
+        
+        # Update journal fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update editorial board if provided
+        if editorial_board_data is not None:
+            instance.editorial_board.all().delete()
+            for member_data in editorial_board_data:
+                EditorialBoardMember.objects.create(journal=instance, **member_data)
+        
+        return instance
+
+
+class IssueArticleSerializer(serializers.ModelSerializer):
+    """
+    Serializer for articles in an issue.
+    """
+    article_title = serializers.CharField(source='publication.title', read_only=True)
+    article_authors = serializers.CharField(source='publication.author.full_name', read_only=True)
+    article_doi = serializers.CharField(source='publication.doi', read_only=True)
+    
+    class Meta:
+        model = IssueArticle
+        fields = ['id', 'publication', 'article_title', 'article_authors', 'article_doi', 'order', 'section']
+        read_only_fields = ['id']
+
+
+class IssueListSerializer(serializers.ModelSerializer):
+    """
+    Simplified serializer for listing issues.
+    """
+    journal_title = serializers.CharField(source='journal.title', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    cover_image_url = serializers.SerializerMethodField()
+    articles_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Issue
+        fields = [
+            'id', 'journal_title', 'volume', 'issue_number', 'title',
+            'description', 'cover_image_url', 'publication_date',
+            'status', 'status_display', 'is_special_issue',
+            'articles_count', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_cover_image_url(self, obj):
+        if obj.cover_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.cover_image.url)
+            return obj.cover_image.url
+        return None
+    
+    def get_articles_count(self, obj):
+        return obj.articles.count()
+
+
+class IssueDetailSerializer(serializers.ModelSerializer):
+    """
+    Detailed serializer for issues with all articles.
+    """
+    journal_title = serializers.CharField(source='journal.title', read_only=True)
+    journal_id = serializers.IntegerField(source='journal.id', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    cover_image_url = serializers.SerializerMethodField()
+    
+    # Nested articles
+    articles = IssueArticleSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Issue
+        fields = [
+            'id', 'journal_id', 'journal_title', 'volume', 'issue_number',
+            'title', 'description', 'cover_image', 'cover_image_url',
+            'publication_date', 'submission_deadline', 'doi', 'pages_range',
+            'editorial_note', 'guest_editors', 'status', 'status_display',
+            'is_special_issue', 'created_at', 'updated_at', 'articles'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_cover_image_url(self, obj):
+        if obj.cover_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.cover_image.url)
+            return obj.cover_image.url
+        return None
+
+
+class IssueCreateUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating and updating issues.
+    """
+    class Meta:
+        model = Issue
+        fields = [
+            'volume', 'issue_number', 'title', 'description', 'cover_image',
+            'publication_date', 'submission_deadline', 'doi', 'pages_range',
+            'editorial_note', 'guest_editors', 'status', 'is_special_issue'
+        ]
+    
+    def create(self, validated_data):
+        journal = self.context['journal']
+        issue = Issue.objects.create(journal=journal, **validated_data)
+        
+        # Update journal stats
+        stats, created = JournalStats.objects.get_or_create(journal=journal)
+        stats.total_issues += 1
+        stats.save()
+        
+        return issue
+
+
+class AddArticleToIssueSerializer(serializers.Serializer):
+    """
+    Serializer for adding articles to an issue.
+    """
+    publication_id = serializers.IntegerField(required=True)
+    order = serializers.IntegerField(default=0)
+    section = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    
+    def create(self, validated_data):
+        issue = self.context['issue']
+        publication_id = validated_data.pop('publication_id')
+        
+        from .models import Publication
+        publication = Publication.objects.get(id=publication_id)
+        
+        return IssueArticle.objects.create(
+            issue=issue,
+            publication=publication,
+            **validated_data
+        )

@@ -9,15 +9,20 @@ from drf_spectacular.types import OpenApiTypes
 
 from .models import (
     Publication, MeSHTerm, PublicationStats, 
-    Citation, Reference, LinkOut, PublicationRead
+    Citation, Reference, LinkOut, PublicationRead,
+    Journal, EditorialBoardMember, JournalStats, Issue, IssueArticle
 )
 from .serializers import (
     PublicationListSerializer, PublicationDetailSerializer,
     PublicationCreateUpdateSerializer, AddCitationSerializer,
     AddReferenceSerializer, BulkReferencesSerializer,
-    MeSHTermSerializer, LinkOutSerializer, PublicationStatsSerializer
+    MeSHTermSerializer, LinkOutSerializer, PublicationStatsSerializer,
+    JournalListSerializer, JournalDetailSerializer, JournalCreateUpdateSerializer,
+    EditorialBoardMemberSerializer, JournalStatsSerializer,
+    IssueListSerializer, IssueDetailSerializer, IssueCreateUpdateSerializer,
+    AddArticleToIssueSerializer
 )
-from users.models import Author
+from users.models import Author, Institution
 
 
 class PublicationListCreateView(generics.ListCreateAPIView):
@@ -506,3 +511,502 @@ class DownloadPublicationView(APIView):
             'pdf_url': pdf_url,
             'downloads_count': stats.downloads_count
         }, status=status.HTTP_200_OK)
+
+
+# ==================== JOURNAL VIEWS ====================
+
+class JournalListCreateView(generics.ListCreateAPIView):
+    """
+    List all journals for the authenticated institution or create a new journal.
+    
+    GET: List all journals of the authenticated institution
+    POST: Create a new journal
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return JournalCreateUpdateSerializer
+        return JournalListSerializer
+    
+    def get_queryset(self):
+        # Get journals for the authenticated institution
+        try:
+            institution = Institution.objects.get(user=self.request.user)
+            return Journal.objects.filter(institution=institution).select_related(
+                'institution', 'stats'
+            ).prefetch_related('editorial_board', 'issues')
+        except Institution.DoesNotExist:
+            return Journal.objects.none()
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='List My Journals',
+        description='Retrieve all journals for the authenticated institution.',
+        responses={
+            200: JournalListSerializer(many=True),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Create Journal',
+        description='Create a new journal with all information sections and editorial board.',
+        request=JournalCreateUpdateSerializer,
+        examples=[
+            OpenApiExample(
+                'Create Journal Example',
+                value={
+                    'title': 'International Journal of Advanced Research',
+                    'short_title': 'IJAR',
+                    'issn': '1234-5678',
+                    'e_issn': '9876-5432',
+                    'description': 'Leading journal in advanced research',
+                    'scope': 'Covers all aspects of advanced scientific research',
+                    'publisher_name': 'Academic Press',
+                    'frequency': 'quarterly',
+                    'established_year': 2020,
+                    'about_journal': 'Detailed information about the journal...',
+                    'ethics_policies': 'Our ethics and editorial policies...',
+                    'writing_formatting': 'Guidelines for writing and formatting...',
+                    'submitting_manuscript': 'Instructions for manuscript submission...',
+                    'help_support': 'Contact us for support...',
+                    'contact_email': 'editor@journal.com',
+                    'is_open_access': True,
+                    'peer_reviewed': True
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: JournalDetailSerializer,
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        journal = serializer.save()
+        
+        # Return detailed response
+        response_serializer = JournalDetailSerializer(journal, context={'request': request})
+        return Response({
+            'message': 'Journal created successfully',
+            'journal': response_serializer.data
+        }, status=status.HTTP_201_CREATED)
+
+
+class JournalDetailView(APIView):
+    """
+    Retrieve, update, or delete a specific journal.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+    
+    def get_object(self, pk, user):
+        try:
+            institution = Institution.objects.get(user=user)
+            return get_object_or_404(
+                Journal.objects.select_related('institution', 'stats')
+                .prefetch_related('editorial_board', 'issues'),
+                pk=pk,
+                institution=institution
+            )
+        except Institution.DoesNotExist:
+            return None
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Get Journal Details',
+        description='Retrieve complete journal information including editorial board and stats.',
+        responses={
+            200: JournalDetailSerializer,
+            404: OpenApiResponse(description='Journal not found'),
+        }
+    )
+    def get(self, request, pk):
+        journal = self.get_object(pk, request.user)
+        if not journal:
+            return Response({'error': 'Journal not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = JournalDetailSerializer(journal, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Update Journal (Partial)',
+        description='Partially update journal information.',
+        request=JournalCreateUpdateSerializer,
+        responses={
+            200: JournalDetailSerializer,
+            404: OpenApiResponse(description='Journal not found'),
+        }
+    )
+    def patch(self, request, pk):
+        journal = self.get_object(pk, request.user)
+        if not journal:
+            return Response({'error': 'Journal not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = JournalCreateUpdateSerializer(
+            journal, 
+            data=request.data, 
+            partial=True,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        journal = serializer.save()
+        
+        response_serializer = JournalDetailSerializer(journal, context={'request': request})
+        return Response({
+            'message': 'Journal updated successfully',
+            'journal': response_serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Delete Journal',
+        description='Permanently delete a journal and all associated data.',
+        responses={
+            200: OpenApiResponse(description='Journal deleted'),
+            404: OpenApiResponse(description='Journal not found'),
+        }
+    )
+    def delete(self, request, pk):
+        journal = self.get_object(pk, request.user)
+        if not journal:
+            return Response({'error': 'Journal not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        title = journal.title
+        journal.delete()
+        
+        return Response({
+            'message': f'Journal "{title}" has been deleted successfully'
+        }, status=status.HTTP_200_OK)
+
+
+class JournalStatsView(APIView):
+    """
+    Get or update statistics for a journal.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Get Journal Stats',
+        description='Retrieve statistics including impact factor, cite score, acceptance rate, etc.',
+        responses={
+            200: JournalStatsSerializer,
+            404: OpenApiResponse(description='Journal not found'),
+        }
+    )
+    def get(self, request, pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            journal = get_object_or_404(Journal, pk=pk, institution=institution)
+            stats, created = JournalStats.objects.get_or_create(journal=journal)
+            
+            serializer = JournalStatsSerializer(stats)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Update Journal Stats',
+        description='Update journal statistics (impact factor, cite score, etc.).',
+        request=JournalStatsSerializer,
+        responses={
+            200: JournalStatsSerializer,
+            404: OpenApiResponse(description='Journal not found'),
+        }
+    )
+    def patch(self, request, pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            journal = get_object_or_404(Journal, pk=pk, institution=institution)
+            stats, created = JournalStats.objects.get_or_create(journal=journal)
+            
+            serializer = JournalStatsSerializer(stats, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            
+            return Response({
+                'message': 'Stats updated successfully',
+                'stats': serializer.data
+            }, status=status.HTTP_200_OK)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class EditorialBoardListCreateView(APIView):
+    """
+    List or add editorial board members for a journal.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='List Editorial Board',
+        description='Get all editorial board members for a journal.',
+        responses={
+            200: EditorialBoardMemberSerializer(many=True),
+            404: OpenApiResponse(description='Journal not found'),
+        }
+    )
+    def get(self, request, journal_pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            journal = get_object_or_404(Journal, pk=journal_pk, institution=institution)
+            members = journal.editorial_board.filter(is_active=True)
+            
+            serializer = EditorialBoardMemberSerializer(members, many=True, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Add Editorial Board Member',
+        description='Add a new editorial board member to the journal.',
+        request=EditorialBoardMemberSerializer,
+        responses={
+            201: EditorialBoardMemberSerializer,
+            404: OpenApiResponse(description='Journal not found'),
+        }
+    )
+    def post(self, request, journal_pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            journal = get_object_or_404(Journal, pk=journal_pk, institution=institution)
+            
+            serializer = EditorialBoardMemberSerializer(data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            member = serializer.save(journal=journal)
+            
+            return Response({
+                'message': 'Editorial board member added successfully',
+                'member': EditorialBoardMemberSerializer(member, context={'request': request}).data
+            }, status=status.HTTP_201_CREATED)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ==================== ISSUE VIEWS ====================
+
+class IssueListCreateView(generics.ListCreateAPIView):
+    """
+    List all issues for a journal or create a new issue.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return IssueCreateUpdateSerializer
+        return IssueListSerializer
+    
+    def get_queryset(self):
+        journal_pk = self.kwargs.get('journal_pk')
+        try:
+            institution = Institution.objects.get(user=self.request.user)
+            journal = get_object_or_404(Journal, pk=journal_pk, institution=institution)
+            return Issue.objects.filter(journal=journal).prefetch_related('articles')
+        except Institution.DoesNotExist:
+            return Issue.objects.none()
+    
+    @extend_schema(
+        tags=['Issues'],
+        summary='List Journal Issues',
+        description='Retrieve all issues for a specific journal.',
+        responses={
+            200: IssueListSerializer(many=True),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Issues'],
+        summary='Create Issue',
+        description='Create a new issue for the journal.',
+        request=IssueCreateUpdateSerializer,
+        responses={
+            201: IssueDetailSerializer,
+            400: OpenApiResponse(description='Validation error'),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        journal_pk = self.kwargs.get('journal_pk')
+        try:
+            institution = Institution.objects.get(user=request.user)
+            journal = get_object_or_404(Journal, pk=journal_pk, institution=institution)
+            
+            serializer = self.get_serializer(data=request.data, context={'request': request, 'journal': journal})
+            serializer.is_valid(raise_exception=True)
+            issue = serializer.save()
+            
+            response_serializer = IssueDetailSerializer(issue, context={'request': request})
+            return Response({
+                'message': 'Issue created successfully',
+                'issue': response_serializer.data
+            }, status=status.HTTP_201_CREATED)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class IssueDetailView(APIView):
+    """
+    Retrieve, update, or delete a specific issue.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+    
+    def get_object(self, journal_pk, pk, user):
+        try:
+            institution = Institution.objects.get(user=user)
+            journal = get_object_or_404(Journal, pk=journal_pk, institution=institution)
+            return get_object_or_404(
+                Issue.objects.prefetch_related('articles'),
+                pk=pk,
+                journal=journal
+            )
+        except Institution.DoesNotExist:
+            return None
+    
+    @extend_schema(
+        tags=['Issues'],
+        summary='Get Issue Details',
+        description='Retrieve complete issue information including all articles.',
+        responses={
+            200: IssueDetailSerializer,
+            404: OpenApiResponse(description='Issue not found'),
+        }
+    )
+    def get(self, request, journal_pk, pk):
+        issue = self.get_object(journal_pk, pk, request.user)
+        if not issue:
+            return Response({'error': 'Issue not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = IssueDetailSerializer(issue, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=['Issues'],
+        summary='Update Issue',
+        description='Update issue information.',
+        request=IssueCreateUpdateSerializer,
+        responses={
+            200: IssueDetailSerializer,
+            404: OpenApiResponse(description='Issue not found'),
+        }
+    )
+    def patch(self, request, journal_pk, pk):
+        issue = self.get_object(journal_pk, pk, request.user)
+        if not issue:
+            return Response({'error': 'Issue not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = IssueCreateUpdateSerializer(
+            issue, 
+            data=request.data, 
+            partial=True,
+            context={'request': request, 'journal': issue.journal}
+        )
+        serializer.is_valid(raise_exception=True)
+        issue = serializer.save()
+        
+        response_serializer = IssueDetailSerializer(issue, context={'request': request})
+        return Response({
+            'message': 'Issue updated successfully',
+            'issue': response_serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=['Issues'],
+        summary='Delete Issue',
+        description='Permanently delete an issue.',
+        responses={
+            200: OpenApiResponse(description='Issue deleted'),
+            404: OpenApiResponse(description='Issue not found'),
+        }
+    )
+    def delete(self, request, journal_pk, pk):
+        issue = self.get_object(journal_pk, pk, request.user)
+        if not issue:
+            return Response({'error': 'Issue not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        issue_info = f"Vol. {issue.volume}, Issue {issue.issue_number}"
+        
+        # Update journal stats
+        stats = issue.journal.stats
+        if stats.total_issues > 0:
+            stats.total_issues -= 1
+            stats.save()
+        
+        issue.delete()
+        
+        return Response({
+            'message': f'Issue "{issue_info}" has been deleted successfully'
+        }, status=status.HTTP_200_OK)
+
+
+class AddArticleToIssueView(APIView):
+    """
+    Add an article to a journal issue.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Issues'],
+        summary='Add Article to Issue',
+        description='Add an existing publication to a journal issue.',
+        request=AddArticleToIssueSerializer,
+        examples=[
+            OpenApiExample(
+                'Add Article Example',
+                value={
+                    'publication_id': 1,
+                    'order': 1,
+                    'section': 'Research Articles'
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: OpenApiResponse(description='Article added to issue'),
+            404: OpenApiResponse(description='Issue or publication not found'),
+        }
+    )
+    def post(self, request, journal_pk, issue_pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            journal = get_object_or_404(Journal, pk=journal_pk, institution=institution)
+            issue = get_object_or_404(Issue, pk=issue_pk, journal=journal)
+            
+            serializer = AddArticleToIssueSerializer(
+                data=request.data,
+                context={'issue': issue}
+            )
+            serializer.is_valid(raise_exception=True)
+            article = serializer.save()
+            
+            # Update journal stats
+            stats, created = JournalStats.objects.get_or_create(journal=journal)
+            stats.total_articles += 1
+            stats.save()
+            
+            return Response({
+                'message': 'Article added to issue successfully',
+                'article': {
+                    'id': article.id,
+                    'publication_id': article.publication.id,
+                    'order': article.order,
+                    'section': article.section
+                }
+            }, status=status.HTTP_201_CREATED)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Publication.DoesNotExist:
+            return Response({'error': 'Publication not found'}, status=status.HTTP_404_NOT_FOUND)

@@ -2,10 +2,179 @@ from rest_framework import serializers
 from .models import (
     Publication, MeSHTerm, PublicationStats, 
     Citation, Reference, LinkOut, PublicationRead,
-    Journal, EditorialBoardMember, JournalStats, Issue, IssueArticle
+    Journal, EditorialBoardMember, JournalStats, Issue, IssueArticle,
+    Topic, TopicBranch
 )
 from users.models import Author, Institution
 
+
+# ==================== TOPIC SERIALIZERS ====================
+
+class TopicBranchListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for listing topic branches with hierarchy support."""
+    publications_count = serializers.ReadOnlyField()
+    children_count = serializers.ReadOnlyField()
+    full_path = serializers.ReadOnlyField()
+    parent_id = serializers.IntegerField(source='parent.id', read_only=True, allow_null=True)
+    parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = TopicBranch
+        fields = [
+            'id', 'name', 'slug', 'description', 'level',
+            'parent_id', 'parent_name', 'full_path',
+            'is_active', 'order', 'children_count', 'publications_count'
+        ]
+        read_only_fields = ['id', 'level']
+
+
+class TopicBranchDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for topic branch with full hierarchy info and nested children."""
+    topic_id = serializers.IntegerField(source='topic.id', read_only=True)
+    topic_name = serializers.CharField(source='topic.name', read_only=True)
+    parent_id = serializers.IntegerField(source='parent.id', read_only=True, allow_null=True)
+    parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
+    full_path = serializers.ReadOnlyField()
+    publications_count = serializers.ReadOnlyField()
+    children_count = serializers.ReadOnlyField()
+    children = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = TopicBranch
+        fields = [
+            'id', 'topic_id', 'topic_name', 'parent_id', 'parent_name',
+            'name', 'slug', 'description', 'level', 'full_path',
+            'is_active', 'order', 'children_count', 'publications_count',
+            'children', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'topic_id', 'topic_name', 'level', 'created_at', 'updated_at']
+    
+    def get_children(self, obj):
+        """Get immediate children branches."""
+        children = obj.children.filter(is_active=True).order_by('order', 'name')
+        return TopicBranchListSerializer(children, many=True, context=self.context).data
+
+
+class TopicBranchCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating topic branches with hierarchy support."""
+    
+    class Meta:
+        model = TopicBranch
+        fields = [
+            'id', 'topic', 'parent', 'name', 'slug', 'description', 
+            'is_active', 'order'
+        ]
+        read_only_fields = ['id', 'level']
+    
+    def validate_slug(self, value):
+        """Ensure slug is lowercase and URL-friendly."""
+        return value.lower().strip()
+    
+    def validate(self, data):
+        """Validate hierarchy constraints."""
+        parent = data.get('parent')
+        if parent:
+            # Check depth limit
+            if parent.level >= 4:
+                raise serializers.ValidationError({
+                    'parent': 'Maximum hierarchy depth is 4 levels. Cannot add child to level 4 branch.'
+                })
+            # Ensure parent belongs to same topic
+            topic = data.get('topic', getattr(self.instance, 'topic', None))
+            if topic and parent.topic != topic:
+                raise serializers.ValidationError({
+                    'parent': 'Parent branch must belong to the same topic.'
+                })
+        return data
+
+
+class TopicListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for listing topics."""
+    branches_count = serializers.ReadOnlyField()
+    publications_count = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = Topic
+        fields = [
+            'id', 'name', 'slug', 'description', 'icon',
+            'is_active', 'order', 'branches_count', 
+            'publications_count', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
+class TopicDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for topic with hierarchical branch tree (only root-level branches)."""
+    branches = serializers.SerializerMethodField()
+    branches_count = serializers.ReadOnlyField()
+    publications_count = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = Topic
+        fields = [
+            'id', 'name', 'slug', 'description', 'icon',
+            'is_active', 'order', 'branches', 'branches_count',
+            'publications_count', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_branches(self, obj):
+        """Get root-level branches (level 1) with their children recursively."""
+        root_branches = obj.branches.filter(parent__isnull=True, is_active=True).order_by('order', 'name')
+        return self._serialize_branch_tree(root_branches)
+    
+    def _serialize_branch_tree(self, branches):
+        """Recursively serialize branch tree."""
+        result = []
+        for branch in branches:
+            branch_data = {
+                'id': branch.id,
+                'name': branch.name,
+                'slug': branch.slug,
+                'description': branch.description,
+                'level': branch.level,
+                'full_path': branch.full_path,
+                'is_active': branch.is_active,
+                'order': branch.order,
+                'publications_count': branch.publications_count,
+                'children_count': branch.children_count,
+            }
+            # Add children recursively if they exist
+            children = branch.children.filter(is_active=True).order_by('order', 'name')
+            if children.exists():
+                branch_data['children'] = self._serialize_branch_tree(children)
+            else:
+                branch_data['children'] = []
+            result.append(branch_data)
+        return result
+    
+    class Meta:
+        model = Topic
+        fields = [
+            'id', 'name', 'slug', 'description', 'icon',
+            'is_active', 'order', 'branches', 'branches_count',
+            'publications_count', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class TopicCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating topics."""
+    
+    class Meta:
+        model = Topic
+        fields = [
+            'id', 'name', 'slug', 'description', 'icon',
+            'is_active', 'order'
+        ]
+        read_only_fields = ['id']
+    
+    def validate_slug(self, value):
+        """Ensure slug is lowercase and URL-friendly."""
+        return value.lower().strip()
+
+
+# ==================== MESH AND PUBLICATION SERIALIZERS ====================
 
 class MeSHTermSerializer(serializers.ModelSerializer):
     class Meta:
@@ -67,13 +236,20 @@ class PublicationListSerializer(serializers.ModelSerializer):
     citations_count = serializers.SerializerMethodField()
     references_count = serializers.SerializerMethodField()
     
+    # Topic information
+    topic_branch_id = serializers.IntegerField(source='topic_branch.id', read_only=True, allow_null=True)
+    topic_branch_name = serializers.CharField(source='topic_branch.name', read_only=True, allow_null=True)
+    topic_id = serializers.IntegerField(source='topic_branch.topic.id', read_only=True, allow_null=True)
+    topic_name = serializers.CharField(source='topic_branch.topic.name', read_only=True, allow_null=True)
+    
     class Meta:
         model = Publication
         fields = [
             'id', 'title', 'author_name', 'author_orcid', 'publication_type',
             'publication_type_display', 'doi', 'published_date', 'journal_name',
             'abstract', 'pdf_url', 'is_published', 'created_at', 'updated_at',
-            'stats', 'mesh_terms_count', 'citations_count', 'references_count'
+            'stats', 'mesh_terms_count', 'citations_count', 'references_count',
+            'topic_branch_id', 'topic_branch_name', 'topic_id', 'topic_name'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -117,6 +293,9 @@ class PublicationDetailSerializer(serializers.ModelSerializer):
     # Erratum info
     erratum_from_title = serializers.CharField(source='erratum_from.title', read_only=True, allow_null=True)
     
+    # Topic information
+    topic_branch = TopicBranchDetailSerializer(read_only=True)
+    
     class Meta:
         model = Publication
         fields = [
@@ -125,6 +304,7 @@ class PublicationDetailSerializer(serializers.ModelSerializer):
             'volume', 'issue', 'pages', 'publisher', 'co_authors',
             'erratum_from', 'erratum_from_title',
             'pubmed_id', 'arxiv_id', 'pubmed_central_id',
+            'topic_branch',
             'is_published', 'created_at', 'updated_at',
             'author_id', 'author_name', 'author_email', 'author_orcid',
             'mesh_terms', 'citations', 'references', 'link_outs', 'stats'
@@ -165,6 +345,7 @@ class PublicationCreateUpdateSerializer(serializers.ModelSerializer):
             'doi', 'published_date', 'journal_name', 'volume', 'issue',
             'pages', 'publisher', 'co_authors', 'erratum_from',
             'pubmed_id', 'arxiv_id', 'pubmed_central_id', 'is_published',
+            'topic_branch',
             'mesh_terms_data', 'link_outs_data'
         ]
     

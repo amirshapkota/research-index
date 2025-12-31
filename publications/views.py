@@ -10,7 +10,8 @@ from drf_spectacular.types import OpenApiTypes
 from .models import (
     Publication, MeSHTerm, PublicationStats, 
     Citation, Reference, LinkOut, PublicationRead,
-    Journal, EditorialBoardMember, JournalStats, Issue, IssueArticle
+    Journal, EditorialBoardMember, JournalStats, Issue, IssueArticle,
+    Topic, TopicBranch
 )
 from .serializers import (
     PublicationListSerializer, PublicationDetailSerializer,
@@ -20,10 +21,313 @@ from .serializers import (
     JournalListSerializer, JournalDetailSerializer, JournalCreateUpdateSerializer,
     EditorialBoardMemberSerializer, JournalStatsSerializer,
     IssueListSerializer, IssueDetailSerializer, IssueCreateUpdateSerializer,
-    AddArticleToIssueSerializer
+    AddArticleToIssueSerializer,
+    TopicListSerializer, TopicDetailSerializer, TopicCreateUpdateSerializer,
+    TopicBranchListSerializer, TopicBranchDetailSerializer, TopicBranchCreateUpdateSerializer
 )
 from users.models import Author, Institution
 
+
+# ==================== TOPIC VIEWS ====================
+
+class TopicListCreateView(generics.ListCreateAPIView):
+    """
+    List all topics or create a new topic (admin only).
+    
+    GET: List all active topics with branch counts
+    POST: Create a new topic
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return TopicCreateUpdateSerializer
+        return TopicListSerializer
+    
+    def get_queryset(self):
+        # Show only active topics by default, or all if admin
+        queryset = Topic.objects.all()
+        if not self.request.user.is_staff:
+            queryset = queryset.filter(is_active=True)
+        return queryset.prefetch_related('branches')
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='List Topics',
+        description='Retrieve all topics with branch and publication counts.',
+        responses={200: TopicListSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='Create Topic',
+        description='Create a new topic (admin only).',
+        request=TopicCreateUpdateSerializer,
+        responses={
+            201: TopicDetailSerializer,
+            403: OpenApiResponse(description='Admin permission required')
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        # Check if user is staff/admin
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Only administrators can create topics'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        topic = serializer.save()
+        
+        response_serializer = TopicDetailSerializer(topic)
+        return Response({
+            'message': 'Topic created successfully',
+            'topic': response_serializer.data
+        }, status=status.HTTP_201_CREATED)
+
+
+class TopicDetailView(APIView):
+    """
+    Retrieve, update, or delete a specific topic.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='Get Topic Details',
+        description='Retrieve complete topic information including all branches.',
+        responses={200: TopicDetailSerializer}
+    )
+    def get(self, request, pk):
+        topic = get_object_or_404(Topic, pk=pk)
+        serializer = TopicDetailSerializer(topic)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='Update Topic',
+        description='Update topic information (admin only).',
+        request=TopicCreateUpdateSerializer,
+        responses={200: TopicDetailSerializer}
+    )
+    def patch(self, request, pk):
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Only administrators can update topics'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        topic = get_object_or_404(Topic, pk=pk)
+        serializer = TopicCreateUpdateSerializer(topic, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        topic = serializer.save()
+        
+        response_serializer = TopicDetailSerializer(topic)
+        return Response({
+            'message': 'Topic updated successfully',
+            'topic': response_serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='Delete Topic',
+        description='Delete a topic (admin only).',
+        responses={200: OpenApiResponse(description='Topic deleted')}
+    )
+    def delete(self, request, pk):
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Only administrators can delete topics'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        topic = get_object_or_404(Topic, pk=pk)
+        name = topic.name
+        topic.delete()
+        
+        return Response({
+            'message': f'Topic "{name}" has been deleted successfully'
+        }, status=status.HTTP_200_OK)
+
+
+class TopicBranchListCreateView(generics.ListCreateAPIView):
+    """
+    List all branches for a topic or create a new branch.
+    Supports hierarchical structure - can filter by parent or show all.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return TopicBranchCreateUpdateSerializer
+        return TopicBranchListSerializer
+    
+    def get_queryset(self):
+        topic_pk = self.kwargs.get('topic_pk')
+        parent_pk = self.request.query_params.get('parent')
+        
+        queryset = TopicBranch.objects.filter(topic_id=topic_pk)
+        
+        # Filter by parent if specified, otherwise show root-level branches
+        if parent_pk:
+            queryset = queryset.filter(parent_id=parent_pk)
+        elif self.request.method == 'GET':
+            # By default, only show root-level branches (no parent)
+            queryset = queryset.filter(parent__isnull=True)
+        
+        if not self.request.user.is_staff:
+            queryset = queryset.filter(is_active=True)
+        
+        return queryset.select_related('topic', 'parent').prefetch_related('children')
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='List Topic Branches',
+        description='Retrieve branches for a specific topic. Use ?parent=<id> to get children of a specific branch.',
+        parameters=[
+            OpenApiParameter(
+                name='parent',
+                type=int,
+                location=OpenApiParameter.QUERY,
+                description='Filter by parent branch ID. Omit to get root-level branches.',
+                required=False
+            )
+        ],
+        responses={200: TopicBranchListSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='Create Topic Branch',
+        description='Create a new branch under a topic (admin only). Can specify parent for nested hierarchy (max 4 levels).',
+        request=TopicBranchCreateUpdateSerializer,
+        responses={201: TopicBranchDetailSerializer}
+    )
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Only administrators can create topic branches'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        topic_pk = self.kwargs.get('topic_pk')
+        topic = get_object_or_404(Topic, pk=topic_pk)
+        
+        # Set topic from URL if not provided in data
+        data = request.data.copy()
+        if 'topic' not in data:
+            data['topic'] = topic.id
+        
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        branch = serializer.save()
+        
+        response_serializer = TopicBranchDetailSerializer(branch)
+        return Response({
+            'message': 'Topic branch created successfully',
+            'branch': response_serializer.data
+        }, status=status.HTTP_201_CREATED)
+
+
+class TopicBranchDetailView(APIView):
+    """
+    Retrieve, update, or delete a specific topic branch.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='Get Branch Details',
+        description='Retrieve complete information about a topic branch.',
+        responses={200: TopicBranchDetailSerializer}
+    )
+    def get(self, request, topic_pk, pk):
+        branch = get_object_or_404(TopicBranch, pk=pk, topic_id=topic_pk)
+        serializer = TopicBranchDetailSerializer(branch)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='Update Branch',
+        description='Update topic branch information (admin only).',
+        request=TopicBranchCreateUpdateSerializer,
+        responses={200: TopicBranchDetailSerializer}
+    )
+    def patch(self, request, topic_pk, pk):
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Only administrators can update topic branches'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        branch = get_object_or_404(TopicBranch, pk=pk, topic_id=topic_pk)
+        serializer = TopicBranchCreateUpdateSerializer(branch, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        branch = serializer.save()
+        
+        response_serializer = TopicBranchDetailSerializer(branch)
+        return Response({
+            'message': 'Topic branch updated successfully',
+            'branch': response_serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='Delete Branch',
+        description='Delete a topic branch (admin only).',
+        responses={200: OpenApiResponse(description='Branch deleted')}
+    )
+    def delete(self, request, topic_pk, pk):
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Only administrators can delete topic branches'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        branch = get_object_or_404(TopicBranch, pk=pk, topic_id=topic_pk)
+        name = branch.name
+        branch.delete()
+        
+        return Response({
+            'message': f'Topic branch "{name}" has been deleted successfully'
+        }, status=status.HTTP_200_OK)
+
+
+class PublicationsByTopicBranchView(generics.ListAPIView):
+    """
+    List all publications under a specific topic branch.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = PublicationListSerializer
+    
+    def get_queryset(self):
+        topic_pk = self.kwargs.get('topic_pk')
+        branch_pk = self.kwargs.get('branch_pk')
+        
+        return Publication.objects.filter(
+            topic_branch_id=branch_pk,
+            topic_branch__topic_id=topic_pk,
+            is_published=True
+        ).select_related(
+            'author', 'stats', 'topic_branch', 'topic_branch__topic'
+        ).prefetch_related('mesh_terms')
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='List Publications by Topic Branch',
+        description='Retrieve all published publications under a specific topic branch.',
+        responses={200: PublicationListSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
+# ==================== PUBLICATION VIEWS ====================
 
 class PublicationListCreateView(generics.ListCreateAPIView):
     """

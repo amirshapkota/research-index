@@ -3,9 +3,89 @@ from .models import (
     Publication, MeSHTerm, PublicationStats,
     Citation, Reference, LinkOut, PublicationRead,
     Journal, EditorialBoardMember, JournalStats,
-    Issue, IssueArticle
+    Issue, IssueArticle,
+    Topic, TopicBranch
 )
 
+
+# ==================== TOPIC ADMIN ====================
+
+class TopicBranchInline(admin.TabularInline):
+    model = TopicBranch
+    extra = 1
+    fields = ['name', 'slug', 'is_active', 'order']
+    prepopulated_fields = {'slug': ('name',)}
+
+
+@admin.register(Topic)
+class TopicAdmin(admin.ModelAdmin):
+    list_display = ['name', 'slug', 'is_active', 'order', 'branches_count', 'publications_count', 'created_at']
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['name', 'slug', 'description']
+    prepopulated_fields = {'slug': ('name',)}
+    ordering = ['order', 'name']
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'slug', 'description', 'icon')
+        }),
+        ('Settings', {
+            'fields': ('is_active', 'order')
+        }),
+    )
+    
+    inlines = [TopicBranchInline]
+    
+    def branches_count(self, obj):
+        return obj.branches_count
+    branches_count.short_description = 'Branches'
+    
+    def publications_count(self, obj):
+        return obj.publications_count
+    publications_count.short_description = 'Publications'
+
+
+@admin.register(TopicBranch)
+class TopicBranchAdmin(admin.ModelAdmin):
+    list_display = ['indented_name', 'topic', 'level', 'parent', 'is_active', 'order', 'children_count', 'publications_count']
+    list_filter = ['topic', 'level', 'is_active', 'created_at']
+    search_fields = ['name', 'slug', 'description', 'topic__name', 'parent__name']
+    prepopulated_fields = {'slug': ('name',)}
+    ordering = ['topic', 'level', 'order', 'name']
+    raw_id_fields = ['parent']
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('topic', 'parent', 'name', 'slug', 'description')
+        }),
+        ('Hierarchy', {
+            'fields': ('level',),
+            'classes': ('collapse',),
+            'description': 'Level is auto-calculated based on parent'
+        }),
+        ('Settings', {
+            'fields': ('is_active', 'order')
+        }),
+    )
+    
+    readonly_fields = ['level']
+    
+    def indented_name(self, obj):
+        """Display name with indentation based on hierarchy level."""
+        indent = '—' * (obj.level - 1)
+        return f"{indent} {obj.name}" if obj.level > 1 else obj.name
+    indented_name.short_description = 'Name'
+    
+    def children_count(self, obj):
+        return obj.children_count
+    children_count.short_description = 'Children'
+    
+    def publications_count(self, obj):
+        return obj.publications_count
+    publications_count.short_description = 'Publications'
+
+
+# ==================== PUBLICATION ADMIN ====================
 
 class MeSHTermInline(admin.TabularInline):
     model = MeSHTerm
@@ -41,6 +121,9 @@ class PublicationAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Basic Information', {
             'fields': ('author', 'title', 'abstract', 'publication_type', 'pdf_file')
+        }),
+        ('Classification', {
+            'fields': ('topic_branch',)
         }),
         ('Publication Details', {
             'fields': ('doi', 'published_date', 'journal_name', 'volume', 'issue', 'pages', 'publisher', 'co_authors')

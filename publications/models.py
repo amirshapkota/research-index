@@ -57,8 +57,16 @@ class Publication(models.Model):
     pubmed_id = models.CharField(max_length=50, blank=True, help_text="PubMed ID")
     arxiv_id = models.CharField(max_length=50, blank=True, help_text="arXiv ID")
     pubmed_central_id = models.CharField(max_length=50, blank=True, help_text="PMC ID")
-    
-    # Metadata
+        # Topic Classification
+    topic_branch = models.ForeignKey(
+        'TopicBranch',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='publications',
+        help_text="Topic branch this publication belongs to"
+    )
+        # Metadata
     is_published = models.BooleanField(default=True, help_text="Whether the publication is publicly visible")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -224,6 +232,121 @@ class PublicationRead(models.Model):
     
     def __str__(self):
         return f"Read: {self.publication.title[:30]} at {self.read_at}"
+
+
+# ==================== TOPIC MODELS ====================
+
+class Topic(models.Model):
+    """
+    Top-level topic/category for organizing publications.
+    """
+    name = models.CharField(max_length=200, unique=True, help_text="Topic name (e.g., 'Computer Science')")
+    slug = models.SlugField(max_length=200, unique=True, help_text="URL-friendly version of the name")
+    description = models.TextField(blank=True, help_text="Description of this topic")
+    icon = models.CharField(max_length=100, blank=True, help_text="Icon class or emoji for UI")
+    is_active = models.BooleanField(default=True, help_text="Whether this topic is active")
+    order = models.IntegerField(default=0, help_text="Display order")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['order', 'name']
+        indexes = [
+            models.Index(fields=['slug']),
+            models.Index(fields=['is_active', 'order']),
+        ]
+    
+    def __str__(self):
+        return self.name
+    
+    @property
+    def branches_count(self):
+        """Return the number of topic branches under this topic."""
+        return self.branches.filter(is_active=True).count()
+    
+    @property
+    def publications_count(self):
+        """Return the total number of publications under this topic."""
+        return Publication.objects.filter(topic_branch__topic=self, is_published=True).count()
+
+
+class TopicBranch(models.Model):
+    """
+    Hierarchical subcategory/branch under a main topic.
+    Supports up to 4 levels of nesting (Topic > Branch > Sub-branch > Sub-sub-branch).
+    Publications are tagged with topic branches at any level.
+    """
+    topic = models.ForeignKey(Topic, on_delete=models.CASCADE, related_name='branches')
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='children',
+        help_text="Parent branch for nested hierarchy"
+    )
+    name = models.CharField(max_length=200, help_text="Branch name (e.g., 'Machine Learning')")
+    slug = models.SlugField(max_length=200, help_text="URL-friendly version of the name")
+    description = models.TextField(blank=True, help_text="Description of this topic branch")
+    level = models.IntegerField(default=1, help_text="Hierarchy level (1-4)", validators=[MinValueValidator(1), MaxValueValidator(4)])
+    is_active = models.BooleanField(default=True, help_text="Whether this branch is active")
+    order = models.IntegerField(default=0, help_text="Display order within parent")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['topic', 'level', 'order', 'name']
+        unique_together = [['topic', 'parent', 'slug']]
+        verbose_name_plural = 'Topic Branches'
+        indexes = [
+            models.Index(fields=['topic', 'parent', 'level']),
+            models.Index(fields=['topic', 'is_active', 'order']),
+        ]
+    
+    def __str__(self):
+        if self.parent:
+            return f"{self.parent} > {self.name}"
+        return f"{self.topic.name} > {self.name}"
+    
+    @property
+    def full_path(self):
+        """Return the full hierarchical path."""
+        path = [self.name]
+        current = self.parent
+        while current:
+            path.insert(0, current.name)
+            current = current.parent
+        path.insert(0, self.topic.name)
+        return " > ".join(path)
+    
+    @property
+    def children_count(self):
+        """Return the number of child branches."""
+        return self.children.filter(is_active=True).count()
+    
+    @property
+    def publications_count(self):
+        """Return the number of publications in this branch and all descendants."""
+        branch_ids = [self.id]
+        # Get all descendant branch IDs
+        def get_descendant_ids(branch):
+            for child in branch.children.all():
+                branch_ids.append(child.id)
+                get_descendant_ids(child)
+        get_descendant_ids(self)
+        return Publication.objects.filter(topic_branch_id__in=branch_ids, is_published=True).count()
+    
+    def save(self, *args, **kwargs):
+        # Auto-calculate level based on parent
+        if self.parent:
+            self.level = self.parent.level + 1
+            if self.level > 4:
+                raise ValueError("Maximum hierarchy depth is 4 levels")
+            # Ensure same topic as parent
+            self.topic = self.parent.topic
+        else:
+            self.level = 1
+        super().save(*args, **kwargs)
 
 
 # ==================== JOURNAL MODELS ====================

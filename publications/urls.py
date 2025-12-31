@@ -17,9 +17,28 @@ from .views import (
     IssueListCreateView,
     IssueDetailView,
     AddArticleToIssueView,
+    # Topic views
+    TopicListCreateView,
+    TopicDetailView,
+    TopicBranchListCreateView,
+    TopicBranchDetailView,
+    PublicationsByTopicBranchView,
 )
 
 urlpatterns = [
+    # ==================== TOPICS ====================
+    # Topic CRUD
+    path('topics/', TopicListCreateView.as_view(), name='topic-list-create'),
+    path('topics/<int:pk>/', TopicDetailView.as_view(), name='topic-detail'),
+    
+    # Topic Branches
+    path('topics/<int:topic_pk>/branches/', TopicBranchListCreateView.as_view(), name='topic-branch-list-create'),
+    path('topics/<int:topic_pk>/branches/<int:pk>/', TopicBranchDetailView.as_view(), name='topic-branch-detail'),
+    
+    # Publications by Topic Branch
+    path('topics/<int:topic_pk>/branches/<int:branch_pk>/publications/', PublicationsByTopicBranchView.as_view(), name='publications-by-topic-branch'),
+    
+    # ==================== PUBLICATIONS ====================
     # Publication CRUD
     path('', PublicationListCreateView.as_view(), name='publication-list-create'),
     path('<int:pk>/', PublicationDetailView.as_view(), name='publication-detail'),

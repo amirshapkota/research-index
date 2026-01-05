@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
-from .models import CustomUser, Author, Institution
+from .models import CustomUser, Author, Institution, AuthorStats
 
 
 class AuthorRegistrationSerializer(serializers.ModelSerializer):
@@ -87,11 +87,42 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
 
+class AuthorStatsSerializer(serializers.ModelSerializer):
+    """Serializer for author statistics"""
+    
+    class Meta:
+        model = AuthorStats
+        fields = [
+            'h_index',
+            'i10_index',
+            'total_citations',
+            'total_reads',
+            'total_downloads',
+            'recommendations_count',
+            'total_publications',
+            'average_citations_per_paper',
+            'last_updated',
+        ]
+        read_only_fields = fields
+
+
+class CoAuthorSerializer(serializers.Serializer):
+    """Serializer for co-author information"""
+    id = serializers.IntegerField(allow_null=True)
+    name = serializers.CharField()
+    email = serializers.EmailField(allow_null=True)
+    institute = serializers.CharField(allow_null=True)
+    is_registered = serializers.BooleanField()
+
+
 class AuthorProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     user_type = serializers.CharField(source='user.user_type', read_only=True)
     profile_picture_url = serializers.SerializerMethodField()
     cv_url = serializers.SerializerMethodField()
+    stats = serializers.SerializerMethodField()
+    coauthors = serializers.SerializerMethodField()
+    collaboration_count = serializers.IntegerField(source='get_collaboration_count', read_only=True)
     
     class Meta:
         model = Author
@@ -116,8 +147,11 @@ class AuthorProfileSerializer(serializers.ModelSerializer):
             'researchgate',
             'linkedin',
             'website',
+            'stats',
+            'coauthors',
+            'collaboration_count',
         ]
-        read_only_fields = ['id', 'email', 'user_type']
+        read_only_fields = ['id', 'email', 'user_type', 'stats', 'coauthors', 'collaboration_count']
     
     def get_profile_picture_url(self, obj):
         if obj.profile_picture:
@@ -134,6 +168,19 @@ class AuthorProfileSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.cv.url)
             return obj.cv.url
         return None
+    
+    def get_stats(self, obj):
+        """Get or create author stats"""
+        stats, created = AuthorStats.objects.get_or_create(author=obj)
+        if created or not stats.last_updated:
+            # Update stats if newly created or never updated
+            stats.update_stats()
+        return AuthorStatsSerializer(stats).data
+    
+    def get_coauthors(self, obj):
+        """Get list of co-authors"""
+        coauthors = obj.get_coauthors()
+        return CoAuthorSerializer(coauthors, many=True).data
 
 
 class InstitutionProfileSerializer(serializers.ModelSerializer):

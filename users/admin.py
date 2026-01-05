@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import CustomUser, Author, Institution
+from .models import CustomUser, Author, Institution, AuthorStats
 
 
 class CustomUserAdmin(UserAdmin):
@@ -43,6 +43,48 @@ class InstitutionAdmin(admin.ModelAdmin):
     email.short_description = 'Email'
 
 
+class AuthorStatsAdmin(admin.ModelAdmin):
+    list_display = [
+        'author_name',
+        'h_index',
+        'i10_index',
+        'total_citations',
+        'total_publications',
+        'total_reads',
+        'last_updated'
+    ]
+    search_fields = ['author__full_name', 'author__user__email']
+    list_filter = ['last_updated']
+    readonly_fields = [
+        'h_index',
+        'i10_index',
+        'total_citations',
+        'total_reads',
+        'total_downloads',
+        'recommendations_count',
+        'total_publications',
+        'average_citations_per_paper',
+        'last_updated',
+        'created_at',
+    ]
+    
+    def author_name(self, obj):
+        return obj.author.full_name
+    author_name.short_description = 'Author'
+    
+    actions = ['recalculate_stats']
+    
+    def recalculate_stats(self, request, queryset):
+        """Admin action to recalculate stats for selected authors"""
+        count = 0
+        for stats in queryset:
+            stats.update_stats()
+            count += 1
+        self.message_user(request, f'Successfully recalculated stats for {count} author(s).')
+    recalculate_stats.short_description = 'Recalculate selected author statistics'
+
+
 admin.site.register(CustomUser, CustomUserAdmin)
 admin.site.register(Author, AuthorAdmin)
 admin.site.register(Institution, InstitutionAdmin)
+admin.site.register(AuthorStats, AuthorStatsAdmin)

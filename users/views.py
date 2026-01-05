@@ -15,9 +15,10 @@ from .serializers import (
     UpdateEmailSerializer,
     AccountStatusSerializer,
     DeactivateAccountSerializer,
-    DeleteAccountSerializer
+    DeleteAccountSerializer,
+    AuthorStatsSerializer
 )
-from .models import CustomUser, Author, Institution
+from .models import CustomUser, Author, Institution, AuthorStats
 
 
 class AuthorRegistrationView(generics.CreateAPIView):
@@ -595,3 +596,49 @@ class DeleteAccountView(APIView):
         return Response({
             'message': f'Account {email} has been permanently deleted. All your data has been removed.'
         }, status=status.HTTP_200_OK)
+
+
+class RefreshAuthorStatsView(APIView):
+    """
+    Manually refresh/update author statistics.
+    
+    Recalculates h-index, i10-index, citations, reads, and other metrics
+    based on current publications data.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Profile'],
+        summary='Refresh Author Statistics',
+        description='Manually trigger a recalculation of all author statistics including h-index, i10-index, total citations, reads, and recommendations.',
+        responses={
+            200: OpenApiResponse(
+                description='Statistics updated successfully',
+                response=AuthorStatsSerializer,
+            ),
+            404: OpenApiResponse(description='Author profile not found'),
+            403: OpenApiResponse(description='Only authors can refresh stats'),
+        }
+    )
+    def post(self, request):
+        # Check if user is an author
+        if request.user.user_type != 'author':
+            return Response({
+                'error': 'Only authors can refresh statistics'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            author = Author.objects.get(user=request.user)
+            stats, created = AuthorStats.objects.get_or_create(author=author)
+            stats.update_stats()
+            
+            serializer = AuthorStatsSerializer(stats)
+            return Response({
+                'message': 'Statistics updated successfully',
+                'stats': serializer.data
+            }, status=status.HTTP_200_OK)
+        except Author.DoesNotExist:
+            return Response({
+                'error': 'Author profile not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+

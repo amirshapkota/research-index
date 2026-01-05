@@ -10,7 +10,8 @@ from .views import (
     UpdateEmailView,
     AccountStatusView,
     DeactivateAccountView,
-    DeleteAccountView
+    DeleteAccountView,
+    RefreshAuthorStatsView
 )
 
 urlpatterns = [
@@ -27,6 +28,7 @@ urlpatterns = [
     # Profile endpoints
     path('profile/author/', AuthorProfileView.as_view(), name='author-profile'),
     path('profile/institution/', InstitutionProfileView.as_view(), name='institution-profile'),
+    path('profile/author/refresh-stats/', RefreshAuthorStatsView.as_view(), name='refresh-author-stats'),
     
     # Account Settings endpoints
     path('settings/change-password/', ChangePasswordView.as_view(), name='change-password'),

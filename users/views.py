@@ -142,8 +142,7 @@ class AuthorRegistrationView(generics.CreateAPIView):
             'user': {
                 'email': user.email,
                 'user_type': user.user_type
-            },
-            'access': access_token,
+            }
         }, status=status.HTTP_201_CREATED)
         
         # Set HTTP-only cookies
@@ -203,8 +202,7 @@ class InstitutionRegistrationView(generics.CreateAPIView):
             'user': {
                 'email': user.email,
                 'user_type': user.user_type
-            },
-            'access': access_token,
+            }
         }, status=status.HTTP_201_CREATED)
         
         # Set HTTP-only cookies

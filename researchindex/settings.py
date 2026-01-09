@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-@__$3p2ie*64osubc@91ceqimdunm-%udhg_@zdjz8w^8lk4b#
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']  # Allow all hosts for development - restrict in production!
 
 
 # Application definition
@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',  # CORS support
     'users',
     'common',
     'publications',
@@ -48,6 +49,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # CORS - must be before CommonMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -219,6 +221,31 @@ SPECTACULAR_SETTINGS = {
     'SECURITY': [{'Bearer': []}],
 }
 
+# CORS Configuration
+# Allow all origins for development - restrict in production!
+CORS_ALLOW_ALL_ORIGINS = True  # Allows all hosts (development only)
+CORS_ALLOW_CREDENTIALS = True  # Required for HTTP-only cookies
+
+# Alternative: Specify allowed origins (recommended for production)
+# CORS_ALLOWED_ORIGINS = [
+#     'http://localhost:3000',
+#     'http://localhost:5173',
+#     'https://yourdomain.com',
+# ]
+
+# CORS Headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
 # Email Configuration
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
@@ -228,5 +255,6 @@ EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@researchindex.com')
 CONTACT_EMAIL = config('CONTACT_EMAIL', default='admin@researchindex.com')
+
 
 

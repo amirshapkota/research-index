@@ -143,10 +143,7 @@ class AuthorRegistrationView(generics.CreateAPIView):
                 'email': user.email,
                 'user_type': user.user_type
             },
-            'tokens': {
-                'refresh': refresh_token,
-                'access': access_token,
-            }
+            'access': access_token,
         }, status=status.HTTP_201_CREATED)
         
         # Set HTTP-only cookies
@@ -207,10 +204,7 @@ class InstitutionRegistrationView(generics.CreateAPIView):
                 'email': user.email,
                 'user_type': user.user_type
             },
-            'tokens': {
-                'refresh': refresh_token,
-                'access': access_token,
-            }
+            'access': access_token,
         }, status=status.HTTP_201_CREATED)
         
         # Set HTTP-only cookies
@@ -282,10 +276,7 @@ class LoginView(APIView):
             
             response = Response({
                 'message': 'Login successful',
-                'tokens': {
-                    'refresh': refresh_token,
-                    'access': access_token,
-                },
+                'access': access_token,
                 'user': profile_data
             }, status=status.HTTP_200_OK)
             

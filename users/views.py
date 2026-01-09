@@ -3,7 +3,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 from django.contrib.auth import authenticate
+from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 from .serializers import (
     AuthorRegistrationSerializer, 
@@ -19,6 +21,72 @@ from .serializers import (
     AuthorStatsSerializer
 )
 from .models import CustomUser, Author, Institution, AuthorStats
+
+
+def set_auth_cookies(response, access_token, refresh_token):
+    """
+    Set HTTP-only cookies for JWT tokens.
+    
+    Args:
+        response: Django Response object
+        access_token: JWT access token string
+        refresh_token: JWT refresh token string
+    
+    Returns:
+        Response object with cookies set
+    """
+    # Access token cookie
+    response.set_cookie(
+        key=getattr(settings, 'JWT_AUTH_COOKIE', 'access_token'),
+        value=access_token,
+        max_age=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds(),
+        secure=getattr(settings, 'JWT_AUTH_COOKIE_SECURE', False),
+        httponly=getattr(settings, 'JWT_AUTH_COOKIE_HTTP_ONLY', True),
+        samesite=getattr(settings, 'JWT_AUTH_COOKIE_SAMESITE', 'Lax'),
+        path=getattr(settings, 'JWT_AUTH_COOKIE_PATH', '/'),
+        domain=getattr(settings, 'JWT_AUTH_COOKIE_DOMAIN', None),
+    )
+    
+    # Refresh token cookie
+    response.set_cookie(
+        key=getattr(settings, 'JWT_REFRESH_COOKIE', 'refresh_token'),
+        value=refresh_token,
+        max_age=settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds(),
+        secure=getattr(settings, 'JWT_AUTH_COOKIE_SECURE', False),
+        httponly=getattr(settings, 'JWT_AUTH_COOKIE_HTTP_ONLY', True),
+        samesite=getattr(settings, 'JWT_AUTH_COOKIE_SAMESITE', 'Lax'),
+        path=getattr(settings, 'JWT_AUTH_COOKIE_PATH', '/'),
+        domain=getattr(settings, 'JWT_AUTH_COOKIE_DOMAIN', None),
+    )
+    
+    return response
+
+
+def clear_auth_cookies(response):
+    """
+    Clear authentication cookies.
+    
+    Args:
+        response: Django Response object
+    
+    Returns:
+        Response object with cookies cleared
+    """
+    response.delete_cookie(
+        key=getattr(settings, 'JWT_AUTH_COOKIE', 'access_token'),
+        path=getattr(settings, 'JWT_AUTH_COOKIE_PATH', '/'),
+        domain=getattr(settings, 'JWT_AUTH_COOKIE_DOMAIN', None),
+        samesite=getattr(settings, 'JWT_AUTH_COOKIE_SAMESITE', 'Lax'),
+    )
+    
+    response.delete_cookie(
+        key=getattr(settings, 'JWT_REFRESH_COOKIE', 'refresh_token'),
+        path=getattr(settings, 'JWT_AUTH_COOKIE_PATH', '/'),
+        domain=getattr(settings, 'JWT_AUTH_COOKIE_DOMAIN', None),
+        samesite=getattr(settings, 'JWT_AUTH_COOKIE_SAMESITE', 'Lax'),
+    )
+    
+    return response
 
 
 class AuthorRegistrationView(generics.CreateAPIView):
@@ -66,18 +134,25 @@ class AuthorRegistrationView(generics.CreateAPIView):
         
         # Generate JWT tokens
         refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
         
-        return Response({
+        response = Response({
             'message': 'Author registered successfully',
             'user': {
                 'email': user.email,
                 'user_type': user.user_type
             },
             'tokens': {
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
+                'refresh': refresh_token,
+                'access': access_token,
             }
         }, status=status.HTTP_201_CREATED)
+        
+        # Set HTTP-only cookies
+        set_auth_cookies(response, access_token, refresh_token)
+        
+        return response
 
 
 class InstitutionRegistrationView(generics.CreateAPIView):
@@ -123,18 +198,25 @@ class InstitutionRegistrationView(generics.CreateAPIView):
         
         # Generate JWT tokens
         refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
         
-        return Response({
+        response = Response({
             'message': 'Institution registered successfully',
             'user': {
                 'email': user.email,
                 'user_type': user.user_type
             },
             'tokens': {
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
+                'refresh': refresh_token,
+                'access': access_token,
             }
         }, status=status.HTTP_201_CREATED)
+        
+        # Set HTTP-only cookies
+        set_auth_cookies(response, access_token, refresh_token)
+        
+        return response
 
 
 class LoginView(APIView):
@@ -180,6 +262,8 @@ class LoginView(APIView):
         if user is not None:
             # Generate JWT tokens
             refresh = RefreshToken.for_user(user)
+            access_token = str(refresh.access_token)
+            refresh_token = str(refresh)
             
             # Get profile data based on user type
             profile_data = {}
@@ -196,17 +280,143 @@ class LoginView(APIView):
                 except Institution.DoesNotExist:
                     pass
             
-            return Response({
+            response = Response({
                 'message': 'Login successful',
                 'tokens': {
-                    'refresh': str(refresh),
-                    'access': str(refresh.access_token),
+                    'refresh': refresh_token,
+                    'access': access_token,
                 },
                 'user': profile_data
             }, status=status.HTTP_200_OK)
+            
+            # Set HTTP-only cookies
+            set_auth_cookies(response, access_token, refresh_token)
+            
+            return response
         else:
             return Response({
                 'error': 'Invalid email or password'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class LogoutView(APIView):
+    """
+    Logout endpoint that clears HTTP-only cookies.
+    
+    Blacklists the refresh token and clears authentication cookies.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Authentication'],
+        summary='Logout',
+        description='Logout user by blacklisting refresh token and clearing HTTP-only cookies.',
+        responses={
+            200: OpenApiResponse(description='Logout successful'),
+            400: OpenApiResponse(description='Invalid or missing refresh token'),
+        }
+    )
+    def post(self, request):
+        try:
+            # Try to get refresh token from cookie first
+            refresh_token = request.COOKIES.get(
+                getattr(settings, 'JWT_REFRESH_COOKIE', 'refresh_token')
+            )
+            
+            # Fallback to request body
+            if not refresh_token:
+                refresh_token = request.data.get('refresh')
+            
+            if refresh_token:
+                # Blacklist the refresh token
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            
+            response = Response({
+                'message': 'Logout successful'
+            }, status=status.HTTP_200_OK)
+            
+            # Clear authentication cookies
+            clear_auth_cookies(response)
+            
+            return response
+            
+        except TokenError:
+            response = Response({
+                'message': 'Logout successful (token already invalid)'
+            }, status=status.HTTP_200_OK)
+            
+            # Clear cookies even if token is invalid
+            clear_auth_cookies(response)
+            
+            return response
+        except Exception as e:
+            return Response({
+                'error': 'An error occurred during logout',
+                'detail': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CookieTokenRefreshView(APIView):
+    """
+    Custom token refresh view that works with HTTP-only cookies.
+    
+    Reads refresh token from cookie and returns new access token in cookie.
+    """
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        tags=['Authentication'],
+        summary='Refresh Access Token',
+        description='Refresh access token using refresh token from HTTP-only cookie or request body.',
+        responses={
+            200: OpenApiResponse(description='Token refreshed successfully'),
+            401: OpenApiResponse(description='Invalid refresh token'),
+        }
+    )
+    def post(self, request):
+        # Try to get refresh token from cookie first
+        refresh_token = request.COOKIES.get(
+            getattr(settings, 'JWT_REFRESH_COOKIE', 'refresh_token')
+        )
+        
+        # Fallback to request body
+        if not refresh_token:
+            refresh_token = request.data.get('refresh')
+        
+        if not refresh_token:
+            return Response({
+                'error': 'Refresh token not provided'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
+        try:
+            # Validate and refresh token
+            refresh = RefreshToken(refresh_token)
+            access_token = str(refresh.access_token)
+            
+            response = Response({
+                'message': 'Token refreshed successfully',
+                'access': access_token
+            }, status=status.HTTP_200_OK)
+            
+            # Set new access token cookie
+            response.set_cookie(
+                key=getattr(settings, 'JWT_AUTH_COOKIE', 'access_token'),
+                value=access_token,
+                max_age=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds(),
+                secure=getattr(settings, 'JWT_AUTH_COOKIE_SECURE', False),
+                httponly=getattr(settings, 'JWT_AUTH_COOKIE_HTTP_ONLY', True),
+                samesite=getattr(settings, 'JWT_AUTH_COOKIE_SAMESITE', 'Lax'),
+                path=getattr(settings, 'JWT_AUTH_COOKIE_PATH', '/'),
+                domain=getattr(settings, 'JWT_AUTH_COOKIE_DOMAIN', None),
+            )
+            
+            return response
+            
+        except TokenError as e:
+            return Response({
+                'error': 'Invalid refresh token',
+                'detail': str(e)
             }, status=status.HTTP_401_UNAUTHORIZED)
 
 

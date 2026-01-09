@@ -149,7 +149,8 @@ AUTH_USER_MODEL = 'users.CustomUser'
 # REST Framework Configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'users.authentication.JWTCookieAuthentication',  # Custom cookie-based auth
+        'rest_framework_simplejwt.authentication.JWTAuthentication',  # Fallback
     ),
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -179,6 +180,15 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
 }
+
+# JWT Cookie Configuration
+JWT_AUTH_COOKIE = 'access_token'  # Name of the access token cookie
+JWT_REFRESH_COOKIE = 'refresh_token'  # Name of the refresh token cookie
+JWT_AUTH_COOKIE_SECURE = not DEBUG  # Use secure cookies in production (HTTPS only)
+JWT_AUTH_COOKIE_HTTP_ONLY = True  # Prevent JavaScript access (XSS protection)
+JWT_AUTH_COOKIE_SAMESITE = 'Lax'  # CSRF protection ('Strict', 'Lax', or 'None')
+JWT_AUTH_COOKIE_PATH = '/'  # Cookie path
+JWT_AUTH_COOKIE_DOMAIN = None  # Cookie domain (None = current domain)
 
 # DRF Spectacular Configuration
 SPECTACULAR_SETTINGS = {

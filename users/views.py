@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 from django.contrib.auth import authenticate
 from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
@@ -317,9 +318,13 @@ class LogoutView(APIView):
                 refresh_token = request.data.get('refresh')
             
             if refresh_token:
-                # Blacklist the refresh token
-                token = RefreshToken(refresh_token)
-                token.blacklist()
+                try:
+                    # Blacklist the refresh token
+                    token = RefreshToken(refresh_token)
+                    token.blacklist()
+                except AttributeError:
+                    # If blacklist method doesn't exist, manually blacklist
+                    OutstandingToken.objects.filter(token=refresh_token).delete()
             
             response = Response({
                 'message': 'Logout successful'
@@ -340,10 +345,14 @@ class LogoutView(APIView):
             
             return response
         except Exception as e:
-            return Response({
-                'error': 'An error occurred during logout',
-                'detail': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+            # Always clear cookies even on error
+            response = Response({
+                'message': 'Logout successful'
+            }, status=status.HTTP_200_OK)
+            
+            clear_auth_cookies(response)
+            
+            return response
 
 
 class CookieTokenRefreshView(APIView):

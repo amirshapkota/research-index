@@ -40,11 +40,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',  # CORS support
+    'rest_framework',
+    'rest_framework_simplejwt.token_blacklist',  # JWT token blacklist
+    'drf_spectacular',
     'users',
     'common',
     'publications',
-    'rest_framework',
-    'drf_spectacular',
 ]
 
 MIDDLEWARE = [

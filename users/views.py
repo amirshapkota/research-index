@@ -132,10 +132,10 @@ class AuthorRegistrationView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         
-        # Generate JWT tokens
-        refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
-        refresh_token = str(refresh)
+        # Generate JWT tokens with custom claims
+        tokens = user.tokens()
+        access_token = tokens['access']
+        refresh_token = tokens['refresh']
         
         response = Response({
             'message': 'Author registered successfully',
@@ -192,10 +192,10 @@ class InstitutionRegistrationView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         
-        # Generate JWT tokens
-        refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
-        refresh_token = str(refresh)
+        # Generate JWT tokens with custom claims
+        tokens = user.tokens()
+        access_token = tokens['access']
+        refresh_token = tokens['refresh']
         
         response = Response({
             'message': 'Institution registered successfully',
@@ -252,10 +252,10 @@ class LoginView(APIView):
         user = authenticate(request, email=email, password=password)
         
         if user is not None:
-            # Generate JWT tokens
-            refresh = RefreshToken.for_user(user)
-            access_token = str(refresh.access_token)
-            refresh_token = str(refresh)
+            # Generate JWT tokens with custom claims
+            tokens = user.tokens()
+            access_token = tokens['access']
+            refresh_token = tokens['refresh']
             
             # Get profile data based on user type
             profile_data = {}

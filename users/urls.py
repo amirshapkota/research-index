@@ -5,6 +5,7 @@ from .views import (
     LoginView,
     LogoutView,
     CookieTokenRefreshView,
+    MeView,
     AuthorProfileView,
     InstitutionProfileView,
     ChangePasswordView,
@@ -24,6 +25,9 @@ urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
     path('logout/', LogoutView.as_view(), name='logout'),
     path('token/refresh/', CookieTokenRefreshView.as_view(), name='token-refresh'),
+    
+    # Current user profile (me)
+    path('me/', MeView.as_view(), name='me'),
     
     # Profile endpoints
     path('profile/author/', AuthorProfileView.as_view(), name='author-profile'),

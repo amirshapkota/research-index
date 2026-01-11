@@ -409,6 +409,69 @@ class CookieTokenRefreshView(APIView):
             }, status=status.HTTP_401_UNAUTHORIZED)
 
 
+class MeView(APIView):
+    """
+    Get complete information of the authenticated user.
+    
+    Returns author or institution profile based on user type.
+    Single endpoint that adapts to the logged-in user.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Profile'],
+        summary='Get Current User Profile',
+        description='Retrieve complete profile information for the authenticated user. Returns author profile or institution profile based on user type.',
+        responses={
+            200: OpenApiResponse(
+                description='User profile retrieved successfully',
+            ),
+            404: OpenApiResponse(description='Profile not found'),
+        }
+    )
+    def get(self, request):
+        user = request.user
+        
+        # Return author profile
+        if user.user_type == 'author':
+            try:
+                author = Author.objects.get(user=user)
+                serializer = AuthorProfileSerializer(author, context={'request': request})
+                return Response({
+                    'user_type': 'author',
+                    'profile': serializer.data
+                }, status=status.HTTP_200_OK)
+            except Author.DoesNotExist:
+                return Response({
+                    'error': 'Author profile not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Return institution profile
+        elif user.user_type == 'institution':
+            try:
+                institution = Institution.objects.get(user=user)
+                serializer = InstitutionProfileSerializer(institution, context={'request': request})
+                return Response({
+                    'user_type': 'institution',
+                    'profile': serializer.data
+                }, status=status.HTTP_200_OK)
+            except Institution.DoesNotExist:
+                return Response({
+                    'error': 'Institution profile not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Admin or other user types
+        else:
+            return Response({
+                'user_type': user.user_type,
+                'email': user.email,
+                'is_staff': user.is_staff,
+                'is_superuser': user.is_superuser,
+                'created_at': user.created_at,
+                'updated_at': user.updated_at
+            }, status=status.HTTP_200_OK)
+
+
 class AuthorProfileView(APIView):
     """
     Get and update the authenticated author's profile information.

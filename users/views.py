@@ -390,10 +390,17 @@ class CookieTokenRefreshView(TokenRefreshView):
             }, status=status.HTTP_401_UNAUTHORIZED)
         
         # Add refresh token to request data for parent class
-        request.data._mutable = True if hasattr(request.data, '_mutable') else None
-        request.data['refresh'] = refresh_token
-        if request.data._mutable is not None:
+        # Handle both QueryDict (with _mutable) and regular dict
+        if hasattr(request.data, '_mutable'):
+            # It's a QueryDict
+            request.data._mutable = True
+            request.data['refresh'] = refresh_token
             request.data._mutable = False
+        else:
+            # It's a regular dict - create a mutable copy
+            data = dict(request.data)
+            data['refresh'] = refresh_token
+            request._full_data = data
         
         # Call parent's post method to handle token refresh
         response = super().post(request, *args, **kwargs)

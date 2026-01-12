@@ -275,6 +275,17 @@ class LoginView(APIView):
                     profile_data = InstitutionProfileSerializer(institution, context={'request': request}).data
                 except Institution.DoesNotExist:
                     pass
+            elif user.user_type == 'admin':
+                # Admin users don't have profile, return basic user info
+                profile_data = {
+                    'id': user.id,
+                    'email': user.email,
+                    'user_type': user.user_type,
+                    'is_staff': user.is_staff,
+                    'is_superuser': user.is_superuser,
+                    'created_at': user.created_at.isoformat(),
+                    'updated_at': user.updated_at.isoformat()
+                }
             
             response = Response({
                 'message': 'Login successful',
@@ -476,11 +487,15 @@ class MeView(APIView):
         else:
             return Response({
                 'user_type': user.user_type,
-                'email': user.email,
-                'is_staff': user.is_staff,
-                'is_superuser': user.is_superuser,
-                'created_at': user.created_at,
-                'updated_at': user.updated_at
+                'profile': {
+                    'id': user.id,
+                    'email': user.email,
+                    'user_type': user.user_type,
+                    'is_staff': user.is_staff,
+                    'is_superuser': user.is_superuser,
+                    'created_at': user.created_at.isoformat(),
+                    'updated_at': user.updated_at.isoformat()
+                }
             }, status=status.HTTP_200_OK)
 
 

@@ -410,17 +410,9 @@ class CookieTokenRefreshView(TokenRefreshView):
             access_token = response.data.get('access')
             
             if access_token:
-                # Set new access token cookie with same duration as refresh token
-                response.set_cookie(
-                    key=getattr(settings, 'JWT_AUTH_COOKIE', 'access_token'),
-                    value=access_token,
-                    max_age=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds(),
-                    secure=getattr(settings, 'JWT_AUTH_COOKIE_SECURE', False),
-                    httponly=getattr(settings, 'JWT_AUTH_COOKIE_HTTP_ONLY', True),
-                    samesite=getattr(settings, 'JWT_AUTH_COOKIE_SAMESITE', 'Lax'),
-                    path=getattr(settings, 'JWT_AUTH_COOKIE_PATH', '/'),
-                    domain=getattr(settings, 'JWT_AUTH_COOKIE_DOMAIN', None),
-                )
+                # Set both access and refresh token cookies to keep them in sync
+                # Use the same helper function as login for consistency
+                set_auth_cookies(response, access_token, refresh_token)
             
             # Update response message
             response.data['message'] = 'Token refreshed successfully'

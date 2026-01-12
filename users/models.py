@@ -349,6 +349,135 @@ class Institution(models.Model):
         return self.institution_name
 
 
+class AdminStats(models.Model):
+    """
+    System-wide statistics for admin dashboard.
+    Provides overview of the entire platform.
+    """
+    # Since there can be multiple admins, we use OneToOne with user
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='admin_stats')
+    
+    # User statistics
+    total_users = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total number of registered users"
+    )
+    total_authors = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total number of authors"
+    )
+    total_institutions = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total number of institutions"
+    )
+    
+    # Publication statistics
+    total_publications = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total publications in the system"
+    )
+    published_count = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Number of published works"
+    )
+    draft_count = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Number of draft publications"
+    )
+    
+    # Engagement statistics
+    total_citations = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total citations across all publications"
+    )
+    total_reads = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total reads across all publications"
+    )
+    total_downloads = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total downloads across all publications"
+    )
+    
+    # Content statistics
+    total_journals = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total number of journals"
+    )
+    total_topics = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total number of topics"
+    )
+    
+    # Timestamps
+    last_updated = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'Admin Statistics'
+        verbose_name_plural = 'Admin Statistics'
+    
+    def __str__(self):
+        return f"System Stats for {self.user.email}"
+    
+    def update_stats(self):
+        """
+        Recalculate system-wide statistics.
+        """
+        from publications.models import Publication
+        
+        # User counts
+        self.total_users = CustomUser.objects.count()
+        self.total_authors = Author.objects.count()
+        self.total_institutions = Institution.objects.count()
+        
+        # Publication counts
+        all_publications = Publication.objects.all()
+        self.total_publications = all_publications.count()
+        self.published_count = all_publications.filter(is_published=True).count()
+        self.draft_count = all_publications.filter(is_published=False).count()
+        
+        # Engagement metrics from published publications
+        published_pubs = all_publications.filter(is_published=True).select_related('stats')
+        
+        total_citations = 0
+        total_reads = 0
+        total_downloads = 0
+        
+        for pub in published_pubs:
+            if hasattr(pub, 'stats'):
+                stats = pub.stats
+                total_citations += stats.citations_count
+                total_reads += stats.reads_count
+                total_downloads += stats.downloads_count
+        
+        self.total_citations = total_citations
+        self.total_reads = total_reads
+        self.total_downloads = total_downloads
+        
+        # Content counts
+        try:
+            from publications.models import Journal, Topic
+            self.total_journals = Journal.objects.count()
+            self.total_topics = Topic.objects.count()
+        except:
+            self.total_journals = 0
+            self.total_topics = 0
+        
+        self.save()
+
+
 class InstitutionStats(models.Model):
     """
     Statistics for institution's research output and impact.

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats
+from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats, AdminStats
 
 
 class CustomUserAdmin(UserAdmin):
@@ -123,8 +123,52 @@ class InstitutionStatsAdmin(admin.ModelAdmin):
     recalculate_stats.short_description = 'Recalculate selected institution statistics'
 
 
+class AdminStatsAdmin(admin.ModelAdmin):
+    list_display = [
+        'admin_email',
+        'total_users',
+        'total_publications',
+        'published_count',
+        'total_citations',
+        'last_updated'
+    ]
+    search_fields = ['user__email']
+    list_filter = ['last_updated']
+    readonly_fields = [
+        'total_users',
+        'total_authors',
+        'total_institutions',
+        'total_publications',
+        'published_count',
+        'draft_count',
+        'total_citations',
+        'total_reads',
+        'total_downloads',
+        'total_journals',
+        'total_topics',
+        'last_updated',
+        'created_at',
+    ]
+    
+    def admin_email(self, obj):
+        return obj.user.email
+    admin_email.short_description = 'Admin'
+    
+    actions = ['recalculate_stats']
+    
+    def recalculate_stats(self, request, queryset):
+        """Admin action to recalculate system stats"""
+        count = 0
+        for stats in queryset:
+            stats.update_stats()
+            count += 1
+        self.message_user(request, f'Successfully recalculated stats for {count} admin(s).')
+    recalculate_stats.short_description = 'Recalculate system statistics'
+
+
 admin.site.register(CustomUser, CustomUserAdmin)
 admin.site.register(Author, AuthorAdmin)
 admin.site.register(Institution, InstitutionAdmin)
 admin.site.register(AuthorStats, AuthorStatsAdmin)
 admin.site.register(InstitutionStats, InstitutionStatsAdmin)
+admin.site.register(AdminStats, AdminStatsAdmin)

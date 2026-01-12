@@ -21,9 +21,10 @@ from .serializers import (
     DeactivateAccountSerializer,
     DeleteAccountSerializer,
     AuthorStatsSerializer,
-    InstitutionStatsSerializer
+    InstitutionStatsSerializer,
+    AdminStatsSerializer
 )
-from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats
+from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats, AdminStats
 
 
 def set_auth_cookies(response, access_token, refresh_token):
@@ -276,7 +277,11 @@ class LoginView(APIView):
                 except Institution.DoesNotExist:
                     pass
             elif user.user_type == 'admin':
-                # Admin users don't have profile, return basic user info
+                # Admin users get system-wide stats
+                admin_stats, created = AdminStats.objects.get_or_create(user=user)
+                if created or not admin_stats.last_updated:
+                    admin_stats.update_stats()
+                
                 profile_data = {
                     'id': user.id,
                     'email': user.email,
@@ -284,7 +289,8 @@ class LoginView(APIView):
                     'is_staff': user.is_staff,
                     'is_superuser': user.is_superuser,
                     'created_at': user.created_at.isoformat(),
-                    'updated_at': user.updated_at.isoformat()
+                    'updated_at': user.updated_at.isoformat(),
+                    'stats': AdminStatsSerializer(admin_stats).data
                 }
             
             response = Response({
@@ -486,6 +492,11 @@ class MeView(APIView):
         
         # Admin or other user types
         else:
+            # Get or create admin stats
+            admin_stats, created = AdminStats.objects.get_or_create(user=user)
+            if created or not admin_stats.last_updated:
+                admin_stats.update_stats()
+            
             return Response({
                 'user_type': user.user_type,
                 'profile': {
@@ -495,7 +506,8 @@ class MeView(APIView):
                     'is_staff': user.is_staff,
                     'is_superuser': user.is_superuser,
                     'created_at': user.created_at.isoformat(),
-                    'updated_at': user.updated_at.isoformat()
+                    'updated_at': user.updated_at.isoformat(),
+                    'stats': AdminStatsSerializer(admin_stats).data
                 }
             }, status=status.HTTP_200_OK)
 

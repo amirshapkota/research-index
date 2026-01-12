@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
-from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats
+from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats, AdminStats
 
 
 class AuthorRegistrationSerializer(serializers.ModelSerializer):
@@ -128,6 +128,28 @@ class InstitutionStatsSerializer(serializers.ModelSerializer):
             'total_downloads',
             'recommendations_count',
             'total_authors',
+            'last_updated',
+        ]
+        read_only_fields = fields
+
+
+class AdminStatsSerializer(serializers.ModelSerializer):
+    """Serializer for admin system-wide statistics"""
+    
+    class Meta:
+        model = AdminStats
+        fields = [
+            'total_users',
+            'total_authors',
+            'total_institutions',
+            'total_publications',
+            'published_count',
+            'draft_count',
+            'total_citations',
+            'total_reads',
+            'total_downloads',
+            'total_journals',
+            'total_topics',
             'last_updated',
         ]
         read_only_fields = fields

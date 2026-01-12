@@ -20,9 +20,10 @@ from .serializers import (
     AccountStatusSerializer,
     DeactivateAccountSerializer,
     DeleteAccountSerializer,
-    AuthorStatsSerializer
+    AuthorStatsSerializer,
+    InstitutionStatsSerializer
 )
-from .models import CustomUser, Author, Institution, AuthorStats
+from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats
 
 
 def set_auth_cookies(response, access_token, refresh_token):

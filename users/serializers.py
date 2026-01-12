@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
-from .models import CustomUser, Author, Institution, AuthorStats
+from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats
 
 
 class AuthorRegistrationSerializer(serializers.ModelSerializer):
@@ -115,6 +115,24 @@ class CoAuthorSerializer(serializers.Serializer):
     is_registered = serializers.BooleanField()
 
 
+class InstitutionStatsSerializer(serializers.ModelSerializer):
+    """Serializer for institution statistics"""
+    
+    class Meta:
+        model = InstitutionStats
+        fields = [
+            'total_publications',
+            'total_citations',
+            'average_citations_per_paper',
+            'total_reads',
+            'total_downloads',
+            'recommendations_count',
+            'total_authors',
+            'last_updated',
+        ]
+        read_only_fields = fields
+
+
 class AuthorProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     user_type = serializers.CharField(source='user.user_type', read_only=True)
@@ -187,6 +205,7 @@ class InstitutionProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     user_type = serializers.CharField(source='user.user_type', read_only=True)
     logo_url = serializers.SerializerMethodField()
+    stats = serializers.SerializerMethodField()
     
     class Meta:
         model = Institution
@@ -209,8 +228,9 @@ class InstitutionProfileSerializer(serializers.ModelSerializer):
             'established_year',
             'research_areas',
             'total_researchers',
+            'stats',
         ]
-        read_only_fields = ['id', 'email', 'user_type']
+        read_only_fields = ['id', 'email', 'user_type', 'stats']
     
     def get_logo_url(self, obj):
         if obj.logo:
@@ -219,6 +239,14 @@ class InstitutionProfileSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.logo.url)
             return obj.logo.url
         return None
+    
+    def get_stats(self, obj):
+        """Get or create institution stats"""
+        stats, created = InstitutionStats.objects.get_or_create(institution=obj)
+        if created or not stats.last_updated:
+            # Update stats if newly created or never updated
+            stats.update_stats()
+        return InstitutionStatsSerializer(stats).data
 
 
 # Account Settings Serializers

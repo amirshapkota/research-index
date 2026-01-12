@@ -349,3 +349,111 @@ class Institution(models.Model):
         return self.institution_name
 
 
+class InstitutionStats(models.Model):
+    """
+    Statistics for institution's research output and impact.
+    Aggregates metrics from all publications associated with the institution.
+    """
+    institution = models.OneToOneField(Institution, on_delete=models.CASCADE, related_name='stats')
+    
+    # Publication metrics
+    total_publications = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total number of published works from this institution"
+    )
+    
+    # Impact metrics
+    total_citations = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total citations across all publications"
+    )
+    average_citations_per_paper = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0.00,
+        help_text="Average citations per publication"
+    )
+    
+    # Engagement metrics
+    total_reads = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total number of times publications were read"
+    )
+    total_downloads = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total number of PDF downloads"
+    )
+    recommendations_count = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total recommendations received"
+    )
+    
+    # Author metrics
+    total_authors = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Total number of unique authors from this institution"
+    )
+    
+    # Timestamps
+    last_updated = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'Institution Statistics'
+        verbose_name_plural = 'Institution Statistics'
+    
+    def __str__(self):
+        return f"Stats for {self.institution.institution_name}"
+    
+    def update_stats(self):
+        """
+        Recalculate all statistics from publications associated with this institution.
+        """
+        from publications.models import Publication
+        
+        # Get all publications where the author's institute matches this institution
+        publications = Publication.objects.filter(
+            author__institute__icontains=self.institution.institution_name,
+            is_published=True
+        ).select_related('stats').distinct()
+        
+        total_citations = 0
+        total_reads = 0
+        total_downloads = 0
+        total_recommendations = 0
+        total_pubs = publications.count()
+        
+        for pub in publications:
+            if hasattr(pub, 'stats'):
+                stats = pub.stats
+                total_citations += stats.citations_count
+                total_reads += stats.reads_count
+                total_downloads += stats.downloads_count
+                total_recommendations += stats.recommendations_count
+        
+        # Count unique authors from this institution
+        unique_authors = publications.values('author').distinct().count()
+        
+        # Update fields
+        self.total_publications = total_pubs
+        self.total_citations = total_citations
+        self.total_reads = total_reads
+        self.total_downloads = total_downloads
+        self.recommendations_count = total_recommendations
+        self.total_authors = unique_authors
+        
+        # Calculate average citations
+        if total_pubs > 0:
+            self.average_citations_per_paper = round(total_citations / total_pubs, 2)
+        else:
+            self.average_citations_per_paper = 0.00
+        
+        self.save()
+
+

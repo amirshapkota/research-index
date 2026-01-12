@@ -9,10 +9,10 @@
 
 ### Security Improvements
 
-✅ **XSS Protection**: Tokens stored in HTTP-only cookies (JavaScript cannot access)  
-✅ **CSRF Protection**: SameSite cookie attribute  
-✅ **HTTPS Enforcement**: Secure flag in production  
-✅ **Automatic Management**: Browser handles cookies automatically
+ **XSS Protection**: Tokens stored in HTTP-only cookies (JavaScript cannot access)  
+ **CSRF Protection**: SameSite cookie attribute  
+ **HTTPS Enforcement**: Secure flag in production  
+ **Automatic Management**: Browser handles cookies automatically
 
 ---
 
@@ -136,9 +136,9 @@ Set-Cookie: refresh_token=eyJ...; HttpOnly; SameSite=Lax; Max-Age=604800
 
 ## Backward Compatibility
 
-✅ Old clients using `Authorization: Bearer <token>` still work  
-✅ New clients using cookies work automatically  
-✅ Both can coexist during migration
+ Old clients using `Authorization: Bearer <token>` still work  
+ New clients using cookies work automatically  
+ Both can coexist during migration
 
 ---
 
@@ -201,10 +201,10 @@ curl -X POST http://localhost:8000/api/users/logout/ \
 
 ## Status
 
-✅ **Implementation Complete**  
-✅ **Security Enhanced**  
-✅ **Backward Compatible**  
-✅ **Production Ready**
+ **Implementation Complete**  
+ **Security Enhanced**  
+ **Backward Compatible**  
+ **Production Ready**
 
 ---
 

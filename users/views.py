@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 from django.contrib.auth import authenticate
 from django.conf import settings
@@ -356,7 +357,7 @@ class LogoutView(APIView):
             return response
 
 
-class CookieTokenRefreshView(APIView):
+class CookieTokenRefreshView(TokenRefreshView):
     """
     Custom token refresh view that works with HTTP-only cookies.
     
@@ -373,7 +374,7 @@ class CookieTokenRefreshView(APIView):
             401: OpenApiResponse(description='Invalid refresh token'),
         }
     )
-    def post(self, request):
+    def post(self, request, *args, **kwargs):
         # Try to get refresh token from cookie first
         refresh_token = request.COOKIES.get(
             getattr(settings, 'JWT_REFRESH_COOKIE', 'refresh_token')
@@ -388,35 +389,36 @@ class CookieTokenRefreshView(APIView):
                 'error': 'Refresh token not provided'
             }, status=status.HTTP_401_UNAUTHORIZED)
         
-        try:
-            # Validate and refresh token
-            refresh = RefreshToken(refresh_token)
-            access_token = str(refresh.access_token)
+        # Add refresh token to request data for parent class
+        request.data._mutable = True if hasattr(request.data, '_mutable') else None
+        request.data['refresh'] = refresh_token
+        if request.data._mutable is not None:
+            request.data._mutable = False
+        
+        # Call parent's post method to handle token refresh
+        response = super().post(request, *args, **kwargs)
+        
+        if response.status_code == 200:
+            # Get the new access token from response
+            access_token = response.data.get('access')
             
-            response = Response({
-                'message': 'Token refreshed successfully',
-                'access': access_token
-            }, status=status.HTTP_200_OK)
+            if access_token:
+                # Set new access token cookie with same duration as refresh token
+                response.set_cookie(
+                    key=getattr(settings, 'JWT_AUTH_COOKIE', 'access_token'),
+                    value=access_token,
+                    max_age=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds(),
+                    secure=getattr(settings, 'JWT_AUTH_COOKIE_SECURE', False),
+                    httponly=getattr(settings, 'JWT_AUTH_COOKIE_HTTP_ONLY', True),
+                    samesite=getattr(settings, 'JWT_AUTH_COOKIE_SAMESITE', 'Lax'),
+                    path=getattr(settings, 'JWT_AUTH_COOKIE_PATH', '/'),
+                    domain=getattr(settings, 'JWT_AUTH_COOKIE_DOMAIN', None),
+                )
             
-            # Set new access token cookie with same duration as refresh token
-            response.set_cookie(
-                key=getattr(settings, 'JWT_AUTH_COOKIE', 'access_token'),
-                value=access_token,
-                max_age=settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds(),  # Same as refresh token
-                secure=getattr(settings, 'JWT_AUTH_COOKIE_SECURE', False),
-                httponly=getattr(settings, 'JWT_AUTH_COOKIE_HTTP_ONLY', True),
-                samesite=getattr(settings, 'JWT_AUTH_COOKIE_SAMESITE', 'Lax'),
-                path=getattr(settings, 'JWT_AUTH_COOKIE_PATH', '/'),
-                domain=getattr(settings, 'JWT_AUTH_COOKIE_DOMAIN', None),
-            )
-            
-            return response
-            
-        except TokenError as e:
-            return Response({
-                'error': 'Invalid refresh token',
-                'detail': str(e)
-            }, status=status.HTTP_401_UNAUTHORIZED)
+            # Update response message
+            response.data['message'] = 'Token refreshed successfully'
+        
+        return response
 
 
 class MeView(APIView):

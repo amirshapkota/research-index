@@ -36,11 +36,12 @@ def set_auth_cookies(response, access_token, refresh_token):
     Returns:
         Response object with cookies set
     """
-    # Access token cookie
+    # Access token cookie - persists same duration as refresh token
+    # This allows automatic token refresh without cookie deletion
     response.set_cookie(
         key=getattr(settings, 'JWT_AUTH_COOKIE', 'access_token'),
         value=access_token,
-        max_age=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds(),
+        max_age=settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds(),  # Same as refresh token
         secure=getattr(settings, 'JWT_AUTH_COOKIE_SECURE', False),
         httponly=getattr(settings, 'JWT_AUTH_COOKIE_HTTP_ONLY', True),
         samesite=getattr(settings, 'JWT_AUTH_COOKIE_SAMESITE', 'Lax'),
@@ -397,11 +398,11 @@ class CookieTokenRefreshView(APIView):
                 'access': access_token
             }, status=status.HTTP_200_OK)
             
-            # Set new access token cookie
+            # Set new access token cookie with same duration as refresh token
             response.set_cookie(
                 key=getattr(settings, 'JWT_AUTH_COOKIE', 'access_token'),
                 value=access_token,
-                max_age=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds(),
+                max_age=settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds(),  # Same as refresh token
                 secure=getattr(settings, 'JWT_AUTH_COOKIE_SECURE', False),
                 httponly=getattr(settings, 'JWT_AUTH_COOKIE_HTTP_ONLY', True),
                 samesite=getattr(settings, 'JWT_AUTH_COOKIE_SAMESITE', 'Lax'),

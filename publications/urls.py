@@ -23,6 +23,10 @@ from .views import (
     TopicBranchListCreateView,
     TopicBranchDetailView,
     PublicationsByTopicBranchView,
+    # Questionnaire views
+    JournalQuestionnaireCreateView,
+    JournalQuestionnaireDetailView,
+    JournalQuestionnaireListView,
 )
 
 urlpatterns = [
@@ -73,4 +77,14 @@ urlpatterns = [
     
     # Issue Articles
     path('journals/<int:journal_pk>/issues/<int:issue_pk>/articles/add/', AddArticleToIssueView.as_view(), name='add-article-to-issue'),
+    
+    # ==================== JOURNAL QUESTIONNAIRE ====================
+    # List all questionnaires
+    path('questionnaires/', JournalQuestionnaireListView.as_view(), name='questionnaire-list'),
+    
+    # Create/Get questionnaire for a specific journal
+    path('journals/<int:journal_pk>/questionnaire/', JournalQuestionnaireCreateView.as_view(), name='journal-questionnaire-create'),
+    
+    # Retrieve/Update/Delete a specific questionnaire
+    path('questionnaires/<int:pk>/', JournalQuestionnaireDetailView.as_view(), name='questionnaire-detail'),
 ]

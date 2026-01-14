@@ -3,7 +3,7 @@ from .models import (
     Publication, MeSHTerm, PublicationStats, 
     Citation, Reference, LinkOut, PublicationRead,
     Journal, EditorialBoardMember, JournalStats, Issue, IssueArticle,
-    Topic, TopicBranch
+    Topic, TopicBranch, JournalQuestionnaire
 )
 from users.models import Author, Institution
 
@@ -745,3 +745,136 @@ class AddArticleToIssueSerializer(serializers.Serializer):
             publication=publication,
             **validated_data
         )
+
+
+# ==================== JOURNAL QUESTIONNAIRE SERIALIZERS ====================
+
+class JournalQuestionnaireListSerializer(serializers.ModelSerializer):
+    """
+    Simplified serializer for listing questionnaires.
+    """
+    journal_title = serializers.CharField(source='journal.title', read_only=True)
+    completeness_percentage = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = JournalQuestionnaire
+        fields = [
+            'id', 'journal', 'journal_title', 'is_complete', 
+            'completeness_percentage', 'submission_date', 'last_updated'
+        ]
+        read_only_fields = ['id', 'submission_date', 'last_updated']
+    
+    def get_completeness_percentage(self, obj):
+        return obj.calculate_completeness()
+
+
+class JournalQuestionnaireDetailSerializer(serializers.ModelSerializer):
+    """
+    Detailed serializer for viewing complete questionnaire data.
+    """
+    journal_title = serializers.CharField(source='journal.title', read_only=True)
+    journal_id = serializers.IntegerField(source='journal.id', read_only=True)
+    completeness_percentage = serializers.SerializerMethodField()
+    
+    # Display choices
+    publication_frequency_display = serializers.CharField(source='get_publication_frequency_display', read_only=True)
+    publication_format_display = serializers.CharField(source='get_publication_format_display', read_only=True)
+    peer_review_type_display = serializers.CharField(source='get_peer_review_type_display', read_only=True)
+    oa_model_display = serializers.CharField(source='get_oa_model_display', read_only=True)
+    license_type_display = serializers.CharField(source='get_license_type_display', read_only=True)
+    digital_archiving_system_display = serializers.CharField(source='get_digital_archiving_system_display', read_only=True)
+    
+    class Meta:
+        model = JournalQuestionnaire
+        fields = '__all__'
+        read_only_fields = ['id', 'journal', 'submission_date', 'last_updated']
+    
+    def get_completeness_percentage(self, obj):
+        return obj.calculate_completeness()
+
+
+class JournalQuestionnaireCreateUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating and updating journal questionnaires.
+    """
+    
+    class Meta:
+        model = JournalQuestionnaire
+        exclude = ['id', 'submission_date', 'last_updated']
+    
+    def validate_foreign_board_members_percentage(self, value):
+        """Validate percentage is between 0 and 100."""
+        if value < 0 or value > 100:
+            raise serializers.ValidationError("Percentage must be between 0 and 100.")
+        return value
+    
+    def validate_average_acceptance_rate(self, value):
+        """Validate acceptance rate is between 0 and 100."""
+        if value < 0 or value > 100:
+            raise serializers.ValidationError("Acceptance rate must be between 0 and 100.")
+        return value
+    
+    def validate_foreign_authors_percentage(self, value):
+        """Validate percentage is between 0 and 100."""
+        if value < 0 or value > 100:
+            raise serializers.ValidationError("Percentage must be between 0 and 100.")
+        return value
+    
+    def validate_apc_amount(self, value):
+        """Validate APC amount is non-negative if provided."""
+        if value is not None and value < 0:
+            raise serializers.ValidationError("APC amount must be non-negative.")
+        return value
+    
+    def validate(self, data):
+        """Cross-field validation."""
+        # If uses_peer_review is False, peer review fields should be cleared
+        if not data.get('uses_peer_review', True):
+            data['peer_review_type'] = ''
+            data['reviewers_per_manuscript'] = None
+            data['average_review_time_weeks'] = None
+        
+        # If has_apc is False, clear APC amount
+        if not data.get('has_apc', False):
+            data['apc_amount'] = None
+            data['apc_currency'] = 'USD'
+        
+        # If not indexed in databases, clear indexing year
+        if not data.get('indexed_databases', '').strip():
+            data['year_first_indexed'] = None
+        
+        return data
+    
+    def create(self, validated_data):
+        """Create questionnaire and link to journal."""
+        journal = validated_data.get('journal')
+        
+        # Check if questionnaire already exists for this journal
+        if JournalQuestionnaire.objects.filter(journal=journal).exists():
+            raise serializers.ValidationError({
+                'journal': 'A questionnaire already exists for this journal. Use update instead.'
+            })
+        
+        questionnaire = JournalQuestionnaire.objects.create(**validated_data)
+        
+        # Update is_complete based on completeness
+        if questionnaire.calculate_completeness() >= 90:
+            questionnaire.is_complete = True
+            questionnaire.save()
+        
+        return questionnaire
+    
+    def update(self, instance, validated_data):
+        """Update questionnaire."""
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        # Update is_complete based on completeness
+        if instance.calculate_completeness() >= 90:
+            instance.is_complete = True
+        else:
+            instance.is_complete = False
+        
+        instance.save()
+        return instance
+

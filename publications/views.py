@@ -11,7 +11,7 @@ from .models import (
     Publication, MeSHTerm, PublicationStats, 
     Citation, Reference, LinkOut, PublicationRead,
     Journal, EditorialBoardMember, JournalStats, Issue, IssueArticle,
-    Topic, TopicBranch
+    Topic, TopicBranch, JournalQuestionnaire
 )
 from .serializers import (
     PublicationListSerializer, PublicationDetailSerializer,
@@ -23,7 +23,9 @@ from .serializers import (
     IssueListSerializer, IssueDetailSerializer, IssueCreateUpdateSerializer,
     AddArticleToIssueSerializer,
     TopicListSerializer, TopicDetailSerializer, TopicCreateUpdateSerializer,
-    TopicBranchListSerializer, TopicBranchDetailSerializer, TopicBranchCreateUpdateSerializer
+    TopicBranchListSerializer, TopicBranchDetailSerializer, TopicBranchCreateUpdateSerializer,
+    JournalQuestionnaireListSerializer, JournalQuestionnaireDetailSerializer,
+    JournalQuestionnaireCreateUpdateSerializer
 )
 from users.models import Author, Institution
 
@@ -1314,3 +1316,305 @@ class AddArticleToIssueView(APIView):
             return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
         except Publication.DoesNotExist:
             return Response({'error': 'Publication not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ==================== JOURNAL QUESTIONNAIRE VIEWS ====================
+
+class JournalQuestionnaireCreateView(APIView):
+    """
+    Create or retrieve questionnaire for a journal.
+    
+    GET: Retrieve existing questionnaire for a journal
+    POST: Create a new questionnaire for a journal
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Journal Questionnaire'],
+        summary='Get Journal Questionnaire',
+        description='Retrieve the questionnaire for a specific journal.',
+        responses={
+            200: JournalQuestionnaireDetailSerializer,
+            404: OpenApiResponse(description='Journal or questionnaire not found'),
+        }
+    )
+    def get(self, request, journal_pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            journal = get_object_or_404(Journal, pk=journal_pk, institution=institution)
+            
+            try:
+                questionnaire = JournalQuestionnaire.objects.get(journal=journal)
+                serializer = JournalQuestionnaireDetailSerializer(questionnaire)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            except JournalQuestionnaire.DoesNotExist:
+                return Response({
+                    'error': 'No questionnaire found for this journal',
+                    'message': 'Please create a questionnaire using POST method'
+                }, status=status.HTTP_404_NOT_FOUND)
+        
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        tags=['Journal Questionnaire'],
+        summary='Create Journal Questionnaire',
+        description='Create a comprehensive questionnaire for a journal with 12 sections of information.',
+        request=JournalQuestionnaireCreateUpdateSerializer,
+        examples=[
+            OpenApiExample(
+                'Create Questionnaire Example',
+                value={
+                    'journal': 1,
+                    'journal_title': 'International Journal of Advanced Research',
+                    'issn': '1234-5678',
+                    'e_issn': '9876-5432',
+                    'publisher_name': 'Academic Press',
+                    'publisher_country': 'United States',
+                    'year_first_publication': 2020,
+                    'publication_frequency': 'quarterly',
+                    'publication_format': 'both',
+                    'journal_website_url': 'https://journal.example.com',
+                    'contact_email': 'editor@journal.com',
+                    'main_discipline': 'Computer Science',
+                    'secondary_disciplines': 'Artificial Intelligence, Machine Learning',
+                    'aims_and_scope': 'The journal focuses on...',
+                    'publishes_original_research': True,
+                    'publishes_review_articles': True,
+                    'publishes_case_studies': False,
+                    'publishes_short_communications': True,
+                    'publishes_other': '',
+                    'editor_in_chief_name': 'Dr. John Smith',
+                    'editor_in_chief_affiliation': 'MIT',
+                    'editor_in_chief_country': 'United States',
+                    'editorial_board_members_count': 25,
+                    'editorial_board_countries': 'USA, UK, Germany, France, China',
+                    'foreign_board_members_percentage': 60.0,
+                    'board_details_published': True,
+                    'uses_peer_review': True,
+                    'peer_review_type': 'double_blind',
+                    'reviewers_per_manuscript': 2,
+                    'average_review_time_weeks': 4,
+                    'reviewers_external': True,
+                    'peer_review_procedure_published': True,
+                    'peer_review_procedure_url': 'https://journal.example.com/peer-review',
+                    'follows_publication_ethics': True,
+                    'ethics_based_on_cope': True,
+                    'ethics_based_on_icmje': True,
+                    'ethics_other_guidelines': '',
+                    'uses_plagiarism_detection': True,
+                    'plagiarism_software_name': 'iThenticate',
+                    'has_retraction_policy': True,
+                    'retraction_policy_url': 'https://journal.example.com/retraction-policy',
+                    'has_conflict_of_interest_policy': True,
+                    'conflict_of_interest_policy_url': 'https://journal.example.com/coi-policy',
+                    'issues_published_in_year': 4,
+                    'all_issues_published_on_time': True,
+                    'articles_published_in_year': 120,
+                    'submissions_rejected': 200,
+                    'average_acceptance_rate': 37.5,
+                    'total_authors_in_year': 350,
+                    'foreign_authors_count': 210,
+                    'author_countries_count': 45,
+                    'foreign_authors_percentage': 60.0,
+                    'encourages_international_submissions': True,
+                    'is_open_access': True,
+                    'oa_model': 'gold',
+                    'has_apc': True,
+                    'apc_amount': 2000.00,
+                    'apc_currency': 'USD',
+                    'license_type': 'cc_by',
+                    'assigns_dois': True,
+                    'doi_registration_agency': 'Crossref',
+                    'metadata_standards_used': 'Dublin Core, JATS',
+                    'uses_online_submission_system': True,
+                    'submission_system_name': 'Open Journal Systems',
+                    'digital_archiving_system': 'lockss',
+                    'other_archiving_system': '',
+                    'indexed_databases': 'Scopus, Web of Science, Google Scholar',
+                    'year_first_indexed': 2021,
+                    'indexed_in_google_scholar': True,
+                    'indexed_in_doaj': True,
+                    'indexed_in_scopus': True,
+                    'indexed_in_web_of_science': False,
+                    'abstracting_services': 'Chemical Abstracts, INSPEC',
+                    'author_guidelines_available': True,
+                    'peer_review_rules_available': True,
+                    'apcs_clearly_stated': True,
+                    'journal_archive_accessible': True,
+                    'data_is_verifiable': True,
+                    'data_matches_website': True,
+                    'consent_to_evaluation': True,
+                    'completed_by_name': 'Jane Doe',
+                    'completed_by_role': 'Managing Editor'
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: JournalQuestionnaireDetailSerializer,
+            400: OpenApiResponse(description='Validation error or questionnaire already exists'),
+        }
+    )
+    def post(self, request, journal_pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            journal = get_object_or_404(Journal, pk=journal_pk, institution=institution)
+            
+            # Set journal in request data
+            data = request.data.copy()
+            data['journal'] = journal.id
+            
+            serializer = JournalQuestionnaireCreateUpdateSerializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            questionnaire = serializer.save()
+            
+            response_serializer = JournalQuestionnaireDetailSerializer(questionnaire)
+            return Response({
+                'message': 'Journal questionnaire created successfully',
+                'questionnaire': response_serializer.data
+            }, status=status.HTTP_201_CREATED)
+        
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class JournalQuestionnaireDetailView(APIView):
+    """
+    Retrieve, update, or delete a specific journal questionnaire.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get_object(self, pk, user):
+        try:
+            institution = Institution.objects.get(user=user)
+            return get_object_or_404(
+                JournalQuestionnaire.objects.select_related('journal'),
+                pk=pk,
+                journal__institution=institution
+            )
+        except Institution.DoesNotExist:
+            return None
+    
+    @extend_schema(
+        tags=['Journal Questionnaire'],
+        summary='Get Questionnaire Details',
+        description='Retrieve complete questionnaire information.',
+        responses={
+            200: JournalQuestionnaireDetailSerializer,
+            404: OpenApiResponse(description='Questionnaire not found'),
+        }
+    )
+    def get(self, request, pk):
+        questionnaire = self.get_object(pk, request.user)
+        if not questionnaire:
+            return Response({'error': 'Questionnaire not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = JournalQuestionnaireDetailSerializer(questionnaire)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=['Journal Questionnaire'],
+        summary='Update Questionnaire (Partial)',
+        description='Partially update questionnaire information.',
+        request=JournalQuestionnaireCreateUpdateSerializer,
+        responses={
+            200: JournalQuestionnaireDetailSerializer,
+            404: OpenApiResponse(description='Questionnaire not found'),
+        }
+    )
+    def patch(self, request, pk):
+        questionnaire = self.get_object(pk, request.user)
+        if not questionnaire:
+            return Response({'error': 'Questionnaire not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = JournalQuestionnaireCreateUpdateSerializer(
+            questionnaire,
+            data=request.data,
+            partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        questionnaire = serializer.save()
+        
+        response_serializer = JournalQuestionnaireDetailSerializer(questionnaire)
+        return Response({
+            'message': 'Questionnaire updated successfully',
+            'questionnaire': response_serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=['Journal Questionnaire'],
+        summary='Update Questionnaire (Full)',
+        description='Fully update questionnaire information.',
+        request=JournalQuestionnaireCreateUpdateSerializer,
+        responses={
+            200: JournalQuestionnaireDetailSerializer,
+            404: OpenApiResponse(description='Questionnaire not found'),
+        }
+    )
+    def put(self, request, pk):
+        questionnaire = self.get_object(pk, request.user)
+        if not questionnaire:
+            return Response({'error': 'Questionnaire not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = JournalQuestionnaireCreateUpdateSerializer(
+            questionnaire,
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+        questionnaire = serializer.save()
+        
+        response_serializer = JournalQuestionnaireDetailSerializer(questionnaire)
+        return Response({
+            'message': 'Questionnaire updated successfully',
+            'questionnaire': response_serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=['Journal Questionnaire'],
+        summary='Delete Questionnaire',
+        description='Delete a journal questionnaire.',
+        responses={
+            200: OpenApiResponse(description='Questionnaire deleted'),
+            404: OpenApiResponse(description='Questionnaire not found'),
+        }
+    )
+    def delete(self, request, pk):
+        questionnaire = self.get_object(pk, request.user)
+        if not questionnaire:
+            return Response({'error': 'Questionnaire not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        journal_title = questionnaire.journal.title
+        questionnaire.delete()
+        
+        return Response({
+            'message': f'Questionnaire for "{journal_title}" has been deleted successfully'
+        }, status=status.HTTP_200_OK)
+
+
+class JournalQuestionnaireListView(generics.ListAPIView):
+    """
+    List all questionnaires for the authenticated institution's journals.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = JournalQuestionnaireListSerializer
+    
+    def get_queryset(self):
+        try:
+            institution = Institution.objects.get(user=self.request.user)
+            return JournalQuestionnaire.objects.filter(
+                journal__institution=institution
+            ).select_related('journal')
+        except Institution.DoesNotExist:
+            return JournalQuestionnaire.objects.none()
+    
+    @extend_schema(
+        tags=['Journal Questionnaire'],
+        summary='List All Questionnaires',
+        description='Retrieve all questionnaires for the authenticated institution.',
+        responses={
+            200: JournalQuestionnaireListSerializer(many=True),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)

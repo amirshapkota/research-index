@@ -4,7 +4,7 @@ from .models import (
     Citation, Reference, LinkOut, PublicationRead,
     Journal, EditorialBoardMember, JournalStats,
     Issue, IssueArticle,
-    Topic, TopicBranch
+    Topic, TopicBranch, JournalQuestionnaire
 )
 
 
@@ -321,3 +321,141 @@ class IssueArticleAdmin(admin.ModelAdmin):
     readonly_fields = ['added_at']
     autocomplete_fields = ['publication', 'issue']
     ordering = ['issue', 'order']
+
+
+# ==================== JOURNAL QUESTIONNAIRE ADMIN ====================
+
+@admin.register(JournalQuestionnaire)
+class JournalQuestionnaireAdmin(admin.ModelAdmin):
+    list_display = [
+        'journal', 
+        'is_complete', 
+        'completeness_percentage',
+        'year_first_publication',
+        'publisher_country',
+        'submission_date',
+        'last_updated'
+    ]
+    list_filter = [
+        'is_complete',
+        'publication_format',
+        'publication_frequency',
+        'uses_peer_review',
+        'is_open_access',
+        'assigns_dois',
+        'submission_date'
+    ]
+    search_fields = [
+        'journal__title',
+        'journal_title',
+        'publisher_name',
+        'main_discipline',
+        'editor_in_chief_name'
+    ]
+    readonly_fields = ['submission_date', 'last_updated', 'completeness_percentage']
+    date_hierarchy = 'submission_date'
+    
+    fieldsets = (
+        ('Journal Link', {
+            'fields': ('journal',)
+        }),
+        ('Section 1: Journal Identity & Formal Data', {
+            'fields': (
+                'journal_title', 'issn', 'e_issn', 'publisher_name', 
+                'publisher_country', 'year_first_publication', 'publication_frequency',
+                'publication_format', 'journal_website_url', 'contact_email'
+            )
+        }),
+        ('Section 2: Scientific Scope & Profile', {
+            'fields': (
+                'main_discipline', 'secondary_disciplines', 'aims_and_scope',
+                'publishes_original_research', 'publishes_review_articles',
+                'publishes_case_studies', 'publishes_short_communications', 'publishes_other'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Section 3: Editorial Board', {
+            'fields': (
+                'editor_in_chief_name', 'editor_in_chief_affiliation', 'editor_in_chief_country',
+                'editorial_board_members_count', 'editorial_board_countries',
+                'foreign_board_members_percentage', 'board_details_published'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Section 4: Peer Review Process', {
+            'fields': (
+                'uses_peer_review', 'peer_review_type', 'reviewers_per_manuscript',
+                'average_review_time_weeks', 'reviewers_external',
+                'peer_review_procedure_published', 'peer_review_procedure_url'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Section 5: Ethics & Publication Standards', {
+            'fields': (
+                'follows_publication_ethics', 'ethics_based_on_cope', 'ethics_based_on_icmje',
+                'ethics_other_guidelines', 'uses_plagiarism_detection', 'plagiarism_software_name',
+                'has_retraction_policy', 'retraction_policy_url',
+                'has_conflict_of_interest_policy', 'conflict_of_interest_policy_url'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Section 6: Publishing Regularity & Stability', {
+            'fields': (
+                'issues_published_in_year', 'all_issues_published_on_time',
+                'articles_published_in_year', 'submissions_rejected', 'average_acceptance_rate'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Section 7: Authors & Internationalization', {
+            'fields': (
+                'total_authors_in_year', 'foreign_authors_count', 'author_countries_count',
+                'foreign_authors_percentage', 'encourages_international_submissions'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Section 8: Open Access & Fees', {
+            'fields': (
+                'is_open_access', 'oa_model', 'has_apc', 'apc_amount',
+                'apc_currency', 'license_type'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Section 9: Digital Publishing Standards', {
+            'fields': (
+                'assigns_dois', 'doi_registration_agency', 'metadata_standards_used',
+                'uses_online_submission_system', 'submission_system_name',
+                'digital_archiving_system', 'other_archiving_system'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Section 10: Indexing & Visibility', {
+            'fields': (
+                'indexed_databases', 'year_first_indexed', 'indexed_in_google_scholar',
+                'indexed_in_doaj', 'indexed_in_scopus', 'indexed_in_web_of_science',
+                'abstracting_services'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Section 11: Website Quality & Transparency', {
+            'fields': (
+                'author_guidelines_available', 'peer_review_rules_available',
+                'apcs_clearly_stated', 'journal_archive_accessible'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Section 12: Declarations & Verification', {
+            'fields': (
+                'data_is_verifiable', 'data_matches_website', 'consent_to_evaluation',
+                'completed_by_name', 'completed_by_role', 'submission_date', 'last_updated'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Completion Status', {
+            'fields': ('is_complete', 'completeness_percentage')
+        }),
+    )
+    
+    def completeness_percentage(self, obj):
+        return f"{obj.calculate_completeness():.1f}%"
+    completeness_percentage.short_description = 'Completeness'
+

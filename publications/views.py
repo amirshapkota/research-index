@@ -24,6 +24,7 @@ from .serializers import (
     AddArticleToIssueSerializer,
     TopicListSerializer, TopicDetailSerializer, TopicCreateUpdateSerializer,
     TopicBranchListSerializer, TopicBranchDetailSerializer, TopicBranchCreateUpdateSerializer,
+    TopicTreeSerializer,
     JournalQuestionnaireListSerializer, JournalQuestionnaireDetailSerializer,
     JournalQuestionnaireCreateUpdateSerializer
 )
@@ -153,6 +154,62 @@ class TopicDetailView(APIView):
         return Response({
             'message': f'Topic "{name}" has been deleted successfully'
         }, status=status.HTTP_200_OK)
+
+
+class TopicTreeView(APIView):
+    """
+    Get all topics with their complete branch trees in a nested format.
+    Returns a dictionary keyed by topic ID.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Topics'],
+        summary='Get Topic Tree',
+        description='Retrieve all topics with their complete branch hierarchies in a tree structure.',
+        responses={200: OpenApiResponse(
+            description='Topic tree structure keyed by topic ID',
+            examples=[
+                OpenApiExample(
+                    'Topic Tree Response',
+                    value={
+                        "1": {
+                            "id": 1,
+                            "name": "Technology",
+                            "slug": "technology",
+                            "description": "Research in computing, algorithms, AI, and related fields",
+                            "icon": ":computer:",
+                            "branches": [
+                                {
+                                    "id": 1,
+                                    "name": "Information Technology",
+                                    "slug": "information-technology",
+                                    "description": "IT infrastructure and systems",
+                                    "level": 1,
+                                    "full_path": "Technology > Information Technology",
+                                    "children_count": 5,
+                                    "publications_count": 145,
+                                    "children": []
+                                }
+                            ],
+                            "branches_count": 12,
+                            "publications_count": 533
+                        }
+                    },
+                    response_only=True
+                )
+            ]
+        )}
+    )
+    def get(self, request):
+        # Get all active topics with prefetched branches
+        topics = Topic.objects.filter(is_active=True).prefetch_related(
+            'branches__children',
+            'branches__parent'
+        ).order_by('order', 'name')
+        
+        serializer = TopicTreeSerializer(topics)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class TopicBranchListCreateView(generics.ListCreateAPIView):

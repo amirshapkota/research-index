@@ -20,6 +20,7 @@ from .views import (
     # Topic views
     TopicListCreateView,
     TopicDetailView,
+    TopicTreeView,
     TopicBranchListCreateView,
     TopicBranchDetailView,
     PublicationsByTopicBranchView,
@@ -33,6 +34,7 @@ urlpatterns = [
     # ==================== TOPICS ====================
     # Topic CRUD
     path('topics/', TopicListCreateView.as_view(), name='topic-list-create'),
+    path('topics/tree/', TopicTreeView.as_view(), name='topic-tree'),
     path('topics/<int:pk>/', TopicDetailView.as_view(), name='topic-detail'),
     
     # Topic Branches

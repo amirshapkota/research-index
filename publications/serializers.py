@@ -241,6 +241,68 @@ class TopicCreateUpdateSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
+class TopicTreeSerializer(serializers.Serializer):
+    """
+    Serializer for topic tree structure.
+    Returns topics with nested branches in a tree format suitable for frontend navigation.
+    """
+    
+    def to_representation(self, instance):
+        """
+        Convert a queryset of topics into a dictionary keyed by topic ID.
+        Each topic contains its full branch tree.
+        """
+        result = {}
+        
+        for topic in instance:
+            # Build root-level branches with nested children
+            root_branches = topic.branches.filter(parent__isnull=True, is_active=True).order_by('order', 'name')
+            
+            result[topic.id] = {
+                'id': topic.id,
+                'name': topic.name,
+                'slug': topic.slug,
+                'description': topic.description,
+                'icon': topic.icon,
+                'branches': self._serialize_branch_tree(root_branches),
+                'branches_count': topic.branches_count,
+                'publications_count': topic.publications_count,
+            }
+        
+        return result
+    
+    def _serialize_branch_tree(self, branches):
+        """
+        Recursively serialize branch tree with all nested children.
+        """
+        result = []
+        
+        for branch in branches:
+            branch_data = {
+                'id': branch.id,
+                'name': branch.name,
+                'slug': branch.slug,
+                'description': branch.description,
+                'level': branch.level,
+                'full_path': branch.full_path,
+                'children_count': branch.children_count,
+                'publications_count': branch.publications_count,
+            }
+            
+            # Add parent_id only if parent exists
+            if branch.parent:
+                branch_data['parent_id'] = branch.parent.id
+            
+            # Recursively add children
+            children = branch.children.filter(is_active=True).order_by('order', 'name')
+            if children.exists():
+                branch_data['children'] = self._serialize_branch_tree(children)
+            
+            result.append(branch_data)
+        
+        return result
+
+
 # ==================== MESH AND PUBLICATION SERIALIZERS ====================
 
 class MeSHTermSerializer(serializers.ModelSerializer):

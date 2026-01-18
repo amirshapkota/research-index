@@ -249,16 +249,16 @@ class TopicTreeSerializer(serializers.Serializer):
     
     def to_representation(self, instance):
         """
-        Convert a queryset of topics into a dictionary keyed by topic ID.
+        Convert a queryset of topics into an array.
         Each topic contains its full branch tree.
         """
-        result = {}
+        result = []
         
         for topic in instance:
             # Build root-level branches with nested children
             root_branches = topic.branches.filter(parent__isnull=True, is_active=True).order_by('order', 'name')
             
-            result[topic.id] = {
+            result.append({
                 'id': topic.id,
                 'name': topic.name,
                 'slug': topic.slug,
@@ -267,7 +267,7 @@ class TopicTreeSerializer(serializers.Serializer):
                 'branches': self._serialize_branch_tree(root_branches),
                 'branches_count': topic.branches_count,
                 'publications_count': topic.publications_count,
-            }
+            })
         
         return result
     

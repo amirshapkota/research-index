@@ -159,21 +159,31 @@ class TopicDetailView(APIView):
 class TopicTreeView(APIView):
     """
     Get all topics with their complete branch trees in a nested format.
-    Returns a dictionary keyed by topic ID.
+    Returns an array of topics with their branch hierarchies.
+    Supports search by topic name, branch name, or description.
     """
     permission_classes = [IsAuthenticated]
     
     @extend_schema(
         tags=['Topics'],
         summary='Get Topic Tree',
-        description='Retrieve all topics with their complete branch hierarchies in a tree structure.',
+        description='Retrieve all topics with their complete branch hierarchies in a tree structure. Supports search query parameter to filter topics and branches.',
+        parameters=[
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search term to filter topics and branches by name or description',
+                required=False
+            )
+        ],
         responses={200: OpenApiResponse(
-            description='Topic tree structure keyed by topic ID',
+            description='Array of topics with their branch hierarchies',
             examples=[
                 OpenApiExample(
                     'Topic Tree Response',
-                    value={
-                        "1": {
+                    value=[
+                        {
                             "id": 1,
                             "name": "Technology",
                             "slug": "technology",
@@ -195,21 +205,34 @@ class TopicTreeView(APIView):
                             "branches_count": 12,
                             "publications_count": 533
                         }
-                    },
+                    ],
                     response_only=True
                 )
             ]
         )}
     )
     def get(self, request):
+        # Get search parameter
+        search_query = request.query_params.get('search', '').strip()
+        
         # Get all active topics with prefetched branches
         topics = Topic.objects.filter(is_active=True).prefetch_related(
             'branches__children',
             'branches__parent'
         ).order_by('order', 'name')
         
-        serializer = TopicTreeSerializer(topics)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        # Apply search filter if provided
+        if search_query:
+            topics = topics.filter(
+                Q(name__icontains=search_query) |
+                Q(description__icontains=search_query) |
+                Q(branches__name__icontains=search_query) |
+                Q(branches__description__icontains=search_query)
+            ).distinct()
+        
+        serializer = TopicTreeSerializer(instance=topics)
+        data = serializer.to_representation(topics)
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class TopicBranchListCreateView(generics.ListCreateAPIView):

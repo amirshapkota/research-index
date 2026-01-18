@@ -222,6 +222,10 @@ class TopicBranchListCreateView(generics.ListCreateAPIView):
         data = request.data.copy()
         if 'topic' not in data:
             data['topic'] = topic.id
+        # Ensure slug key exists so serializers with allow_blank=True accept blank slug
+        # and let the serializer's create() auto-generate it when empty.
+        if 'slug' not in data:
+            data['slug'] = ''
         
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)

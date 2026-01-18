@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils.text import slugify
 from .models import (
     Publication, MeSHTerm, PublicationStats, 
     Citation, Reference, LinkOut, PublicationRead,
@@ -58,6 +59,8 @@ class TopicBranchDetailSerializer(serializers.ModelSerializer):
 class TopicBranchCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating topic branches with hierarchy support."""
     
+    slug = serializers.SlugField(required=False, allow_blank=True)
+    
     class Meta:
         model = TopicBranch
         fields = [
@@ -68,7 +71,9 @@ class TopicBranchCreateUpdateSerializer(serializers.ModelSerializer):
     
     def validate_slug(self, value):
         """Ensure slug is lowercase and URL-friendly."""
-        return value.lower().strip()
+        if value:
+            return value.lower().strip()
+        return value
     
     def validate(self, data):
         """Validate hierarchy constraints."""
@@ -86,6 +91,52 @@ class TopicBranchCreateUpdateSerializer(serializers.ModelSerializer):
                     'parent': 'Parent branch must belong to the same topic.'
                 })
         return data
+    
+    def create(self, validated_data):
+        """Auto-generate slug from name if not provided."""
+        if not validated_data.get('slug'):
+            base = slugify(validated_data['name'])
+            slug = base
+            # Ensure uniqueness within same topic and parent
+            topic = validated_data.get('topic')
+            parent = validated_data.get('parent')
+            i = 1
+            from .models import TopicBranch
+
+            while TopicBranch.objects.filter(topic=topic, parent=parent, slug=slug).exists():
+                i += 1
+                slug = f"{base}-{i}"
+            validated_data['slug'] = slug
+        try:
+            return super().create(validated_data)
+        except Exception as e:
+            # Convert DB integrity errors into serializer validation errors when possible
+            from django.db import IntegrityError
+            if isinstance(e, IntegrityError):
+                raise serializers.ValidationError({"slug": ["A branch with this slug already exists for the given topic/parent."]})
+            raise
+    
+    def update(self, instance, validated_data):
+        """Auto-generate slug from name if not provided during update."""
+        if 'slug' in validated_data and not validated_data['slug']:
+            base = slugify(validated_data.get('name', instance.name))
+            slug = base
+            topic = validated_data.get('topic', instance.topic)
+            parent = validated_data.get('parent', instance.parent)
+            i = 1
+            from .models import TopicBranch
+
+            while TopicBranch.objects.filter(topic=topic, parent=parent, slug=slug).exclude(pk=instance.pk).exists():
+                i += 1
+                slug = f"{base}-{i}"
+            validated_data['slug'] = slug
+        try:
+            return super().update(instance, validated_data)
+        except Exception as e:
+            from django.db import IntegrityError
+            if isinstance(e, IntegrityError):
+                raise serializers.ValidationError({"slug": ["A branch with this slug already exists for the given topic/parent."]})
+            raise
 
 
 class TopicListSerializer(serializers.ModelSerializer):
@@ -161,6 +212,8 @@ class TopicDetailSerializer(serializers.ModelSerializer):
 class TopicCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating topics."""
     
+    slug = serializers.SlugField(required=False, allow_blank=True)
+    
     class Meta:
         model = Topic
         fields = [
@@ -170,8 +223,22 @@ class TopicCreateUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
     
     def validate_slug(self, value):
-        """Ensure slug is lowercase and URL-friendly."""
-        return value.lower().strip()
+        """Ensure slug is lowercase and URL-friendly, or auto-generate from name."""
+        if value:
+            return value.lower().strip()
+        return value
+    
+    def create(self, validated_data):
+        """Auto-generate slug from name if not provided."""
+        if not validated_data.get('slug'):
+            validated_data['slug'] = slugify(validated_data['name'])
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        """Auto-generate slug from name if not provided during update."""
+        if 'slug' in validated_data and not validated_data['slug']:
+            validated_data['slug'] = slugify(validated_data.get('name', instance.name))
+        return super().update(instance, validated_data)
 
 
 # ==================== MESH AND PUBLICATION SERIALIZERS ====================

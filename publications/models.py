@@ -597,3 +597,261 @@ class IssueArticle(models.Model):
     
     def __str__(self):
         return f"{self.publication.title} in {self.issue}"
+
+
+class JournalQuestionnaire(models.Model):
+    """
+    Comprehensive questionnaire data for journal evaluation and indexing.
+    Collected after journal creation to gather detailed information across 12 sections.
+    """
+    
+    # Link to Journal
+    journal = models.OneToOneField(Journal, on_delete=models.CASCADE, related_name='questionnaire')
+    
+    # ==================== SECTION 1: Journal Identity & Formal Data ====================
+    # (Most basic fields already exist in Journal model, but we store them here for completeness)
+    journal_title = models.CharField(max_length=300, help_text="Journal title")
+    issn = models.CharField(max_length=20, blank=True, help_text="ISSN number")
+    e_issn = models.CharField(max_length=20, blank=True, help_text="Electronic ISSN")
+    publisher_name = models.CharField(max_length=200, help_text="Publisher name")
+    publisher_country = models.CharField(max_length=100, help_text="Publisher country")
+    year_first_publication = models.PositiveIntegerField(help_text="Year of first publication")
+    
+    FREQUENCY_CHOICES = [
+        ('weekly', 'Weekly'),
+        ('biweekly', 'Bi-weekly'),
+        ('monthly', 'Monthly'),
+        ('bimonthly', 'Bi-monthly'),
+        ('quarterly', 'Quarterly'),
+        ('biannual', 'Bi-annual'),
+        ('annual', 'Annual'),
+        ('irregular', 'Irregular'),
+    ]
+    publication_frequency = models.CharField(max_length=20, choices=FREQUENCY_CHOICES, help_text="Publication frequency")
+    
+    FORMAT_CHOICES = [
+        ('online', 'Online only'),
+        ('print', 'Print only'),
+        ('both', 'Both online and print'),
+    ]
+    publication_format = models.CharField(max_length=20, choices=FORMAT_CHOICES, help_text="Publication format")
+    journal_website_url = models.URLField(max_length=500, help_text="Journal website URL")
+    contact_email = models.EmailField(help_text="Contact email")
+    
+    # ==================== SECTION 2: Scientific Scope & Profile ====================
+    main_discipline = models.CharField(max_length=200, help_text="Main scientific discipline")
+    secondary_disciplines = models.TextField(blank=True, help_text="Secondary disciplines (comma-separated)")
+    aims_and_scope = models.TextField(help_text="Aims and scope of the journal")
+    
+    # Types of published articles (boolean flags)
+    publishes_original_research = models.BooleanField(default=True, help_text="Publishes original research articles")
+    publishes_review_articles = models.BooleanField(default=False, help_text="Publishes review articles")
+    publishes_case_studies = models.BooleanField(default=False, help_text="Publishes case studies")
+    publishes_short_communications = models.BooleanField(default=False, help_text="Publishes short communications")
+    publishes_other = models.CharField(max_length=500, blank=True, help_text="Other types of articles (specify)")
+    
+    # ==================== SECTION 3: Editorial Board ====================
+    editor_in_chief_name = models.CharField(max_length=200, help_text="Editor-in-Chief name")
+    editor_in_chief_affiliation = models.CharField(max_length=300, help_text="Editor-in-Chief affiliation")
+    editor_in_chief_country = models.CharField(max_length=100, help_text="Country of Editor-in-Chief")
+    editorial_board_members_count = models.PositiveIntegerField(help_text="Number of editorial board members")
+    editorial_board_countries = models.TextField(help_text="Countries represented on editorial board (comma-separated)")
+    foreign_board_members_percentage = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Percentage of foreign editorial board members"
+    )
+    board_details_published = models.BooleanField(help_text="Are full editorial board details published on the website?")
+    
+    # ==================== SECTION 4: Peer Review Process ====================
+    uses_peer_review = models.BooleanField(help_text="Does the journal use peer review?")
+    
+    PEER_REVIEW_TYPE_CHOICES = [
+        ('single_blind', 'Single-blind'),
+        ('double_blind', 'Double-blind'),
+        ('open', 'Open peer review'),
+        ('post_publication', 'Post-publication review'),
+        ('other', 'Other'),
+    ]
+    peer_review_type = models.CharField(
+        max_length=30, 
+        choices=PEER_REVIEW_TYPE_CHOICES, 
+        blank=True,
+        help_text="Type of peer review"
+    )
+    reviewers_per_manuscript = models.PositiveIntegerField(
+        blank=True, 
+        null=True,
+        help_text="Number of reviewers per manuscript"
+    )
+    average_review_time_weeks = models.PositiveIntegerField(
+        blank=True, 
+        null=True,
+        help_text="Average review time in weeks"
+    )
+    reviewers_external = models.BooleanField(
+        default=True,
+        help_text="Are reviewers external to the authors' institutions?"
+    )
+    peer_review_procedure_published = models.BooleanField(
+        help_text="Is the peer-review procedure described on the website?"
+    )
+    peer_review_procedure_url = models.URLField(max_length=500, blank=True, help_text="URL to peer review procedure")
+    
+    # ==================== SECTION 5: Ethics & Publication Standards ====================
+    follows_publication_ethics = models.BooleanField(help_text="Does the journal follow publication ethics?")
+    
+    # Ethics guidelines (multiple can be true)
+    ethics_based_on_cope = models.BooleanField(default=False, help_text="Based on COPE guidelines")
+    ethics_based_on_icmje = models.BooleanField(default=False, help_text="Based on ICMJE guidelines")
+    ethics_other_guidelines = models.CharField(max_length=500, blank=True, help_text="Other ethics guidelines (specify)")
+    
+    uses_plagiarism_detection = models.BooleanField(help_text="Plagiarism detection used?")
+    plagiarism_software_name = models.CharField(max_length=200, blank=True, help_text="Name of plagiarism software")
+    has_retraction_policy = models.BooleanField(help_text="Retraction policy available?")
+    retraction_policy_url = models.URLField(max_length=500, blank=True, help_text="URL to retraction policy")
+    has_conflict_of_interest_policy = models.BooleanField(help_text="Conflict of interest policy available?")
+    conflict_of_interest_policy_url = models.URLField(max_length=500, blank=True, help_text="URL to COI policy")
+    
+    # ==================== SECTION 6: Publishing Regularity & Stability ====================
+    issues_published_in_year = models.PositiveIntegerField(help_text="Number of issues published in the evaluated year")
+    all_issues_published_on_time = models.BooleanField(help_text="Were all declared issues published on time?")
+    articles_published_in_year = models.PositiveIntegerField(help_text="Number of articles published in the year")
+    submissions_rejected = models.PositiveIntegerField(help_text="Number of rejected submissions")
+    average_acceptance_rate = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Average acceptance rate (%)"
+    )
+    
+    # ==================== SECTION 7: Authors & Internationalization ====================
+    total_authors_in_year = models.PositiveIntegerField(help_text="Total number of authors published in the year")
+    foreign_authors_count = models.PositiveIntegerField(help_text="Number of foreign authors")
+    author_countries_count = models.PositiveIntegerField(help_text="Number of countries represented by authors")
+    foreign_authors_percentage = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Percentage of foreign authors"
+    )
+    encourages_international_submissions = models.BooleanField(help_text="Does the journal encourage international submissions?")
+    
+    # ==================== SECTION 8: Open Access & Fees ====================
+    is_open_access = models.BooleanField(help_text="Is the journal Open Access?")
+    
+    OA_MODEL_CHOICES = [
+        ('gold', 'Gold OA'),
+        ('hybrid', 'Hybrid OA'),
+        ('diamond', 'Diamond OA (no fees)'),
+        ('green', 'Green OA'),
+        ('bronze', 'Bronze OA'),
+        ('not_oa', 'Not Open Access'),
+    ]
+    oa_model = models.CharField(
+        max_length=20, 
+        choices=OA_MODEL_CHOICES,
+        blank=True,
+        help_text="Open Access model"
+    )
+    has_apc = models.BooleanField(help_text="Article Processing Charge (APC)?")
+    apc_amount = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(0)],
+        help_text="APC amount (in USD or local currency)"
+    )
+    apc_currency = models.CharField(max_length=10, default='USD', help_text="Currency for APC")
+    
+    LICENSE_CHOICES = [
+        ('cc_by', 'CC BY'),
+        ('cc_by_sa', 'CC BY-SA'),
+        ('cc_by_nc', 'CC BY-NC'),
+        ('cc_by_nc_sa', 'CC BY-NC-SA'),
+        ('cc_by_nd', 'CC BY-ND'),
+        ('cc_by_nc_nd', 'CC BY-NC-ND'),
+        ('cc0', 'CC0 (Public Domain)'),
+        ('other', 'Other'),
+    ]
+    license_type = models.CharField(
+        max_length=20, 
+        choices=LICENSE_CHOICES,
+        blank=True,
+        help_text="License type"
+    )
+    
+    # ==================== SECTION 9: Digital Publishing Standards ====================
+    assigns_dois = models.BooleanField(help_text="Does the journal assign DOIs?")
+    doi_registration_agency = models.CharField(max_length=200, blank=True, help_text="DOI registration agency")
+    metadata_standards_used = models.TextField(blank=True, help_text="Metadata standards used (comma-separated)")
+    uses_online_submission_system = models.BooleanField(help_text="Online submission system used?")
+    submission_system_name = models.CharField(max_length=200, blank=True, help_text="Name of submission system")
+    
+    ARCHIVING_CHOICES = [
+        ('lockss', 'LOCKSS'),
+        ('clockss', 'CLOCKSS'),
+        ('portico', 'Portico'),
+        ('institutional', 'Institutional repository'),
+        ('pmc', 'PubMed Central'),
+        ('other', 'Other'),
+        ('none', 'None'),
+    ]
+    digital_archiving_system = models.CharField(
+        max_length=20,
+        choices=ARCHIVING_CHOICES,
+        blank=True,
+        help_text="Digital archiving system"
+    )
+    other_archiving_system = models.CharField(max_length=200, blank=True, help_text="Other archiving system (specify)")
+    
+    # ==================== SECTION 10: Indexing & Visibility ====================
+    indexed_databases = models.TextField(help_text="Databases where the journal is indexed (comma-separated)")
+    year_first_indexed = models.PositiveIntegerField(blank=True, null=True, help_text="Year first indexed")
+    
+    # Presence in major databases (boolean flags)
+    indexed_in_google_scholar = models.BooleanField(default=False, help_text="Indexed in Google Scholar")
+    indexed_in_doaj = models.BooleanField(default=False, help_text="Indexed in DOAJ")
+    indexed_in_scopus = models.BooleanField(default=False, help_text="Indexed in Scopus")
+    indexed_in_web_of_science = models.BooleanField(default=False, help_text="Indexed in Web of Science")
+    
+    abstracting_services = models.TextField(blank=True, help_text="Abstracting services used (comma-separated)")
+    
+    # ==================== SECTION 11: Website Quality & Transparency ====================
+    author_guidelines_available = models.BooleanField(help_text="Are author guidelines publicly available?")
+    peer_review_rules_available = models.BooleanField(help_text="Are peer review rules publicly available?")
+    apcs_clearly_stated = models.BooleanField(help_text="Are APCs clearly stated on website?")
+    journal_archive_accessible = models.BooleanField(help_text="Is the journal archive publicly accessible?")
+    
+    # ==================== SECTION 12: Declarations & Verification ====================
+    data_is_verifiable = models.BooleanField(help_text="All data provided is true and verifiable")
+    data_matches_website = models.BooleanField(help_text="Data corresponds to information on the journal website")
+    consent_to_evaluation = models.BooleanField(help_text="Consent to Index Copernicus evaluation or similar indexing")
+    completed_by_name = models.CharField(max_length=200, help_text="Name of person completing the survey")
+    completed_by_role = models.CharField(max_length=200, help_text="Role of person completing the survey")
+    submission_date = models.DateTimeField(auto_now_add=True, help_text="Questionnaire submission date")
+    
+    # Metadata
+    last_updated = models.DateTimeField(auto_now=True, help_text="Last update timestamp")
+    is_complete = models.BooleanField(default=False, help_text="Is the questionnaire complete?")
+    
+    class Meta:
+        verbose_name = "Journal Questionnaire"
+        verbose_name_plural = "Journal Questionnaires"
+    
+    def __str__(self):
+        return f"Questionnaire for {self.journal.title}"
+    
+    def calculate_completeness(self):
+        """Calculate what percentage of the questionnaire is filled."""
+        # Count required fields that are filled
+        # This is a simplified version - you can make it more sophisticated
+        required_fields = [
+            self.journal_title, self.publisher_name, self.publisher_country,
+            self.year_first_publication, self.main_discipline, self.aims_and_scope,
+            self.editor_in_chief_name, self.data_is_verifiable, self.data_matches_website
+        ]
+        filled = sum(1 for field in required_fields if field)
+        return (filled / len(required_fields)) * 100

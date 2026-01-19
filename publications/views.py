@@ -1702,3 +1702,177 @@ class JournalQuestionnaireListView(generics.ListAPIView):
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
+
+
+# ==================== PUBLIC PUBLICATION VIEWS ====================
+
+class PublicPublicationsListView(generics.ListAPIView):
+    """
+    List all published publications publicly (no authentication required).
+    Supports filtering by publication type, topic, author, and search.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = PublicationListSerializer
+    
+    def get_queryset(self):
+        queryset = Publication.objects.filter(
+            is_published=True
+        ).select_related(
+            'author', 'author__user', 'stats', 'topic_branch', 'topic_branch__topic'
+        ).prefetch_related('mesh_terms', 'citations', 'references')
+        
+        # Filter by publication type
+        pub_type = self.request.query_params.get('type', None)
+        if pub_type:
+            queryset = queryset.filter(publication_type=pub_type)
+        
+        # Filter by topic branch
+        topic_branch_id = self.request.query_params.get('topic_branch', None)
+        if topic_branch_id:
+            queryset = queryset.filter(topic_branch_id=topic_branch_id)
+        
+        # Filter by author
+        author_id = self.request.query_params.get('author', None)
+        if author_id:
+            queryset = queryset.filter(author_id=author_id)
+        
+        # Search by title, abstract, or journal name
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(abstract__icontains=search) |
+                Q(journal_name__icontains=search) |
+                Q(co_authors__icontains=search)
+            )
+        
+        return queryset
+    
+    @extend_schema(
+        tags=['Public Publications'],
+        summary='List All Publications (Public)',
+        description='Retrieve all published publications. No authentication required. Supports filtering and search.',
+        parameters=[
+            OpenApiParameter(
+                name='type',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by publication type (e.g., journal_article, conference_paper)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='topic_branch',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by topic branch ID',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='author',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by author ID',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search in title, abstract, journal name, or co-authors',
+                required=False,
+            ),
+        ],
+        responses={200: PublicationListSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
+class JournalPublicationsListView(generics.ListAPIView):
+    """
+    List all publications associated with a specific journal (public access).
+    Publications are linked to journals through issues.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = PublicationListSerializer
+    
+    def get_queryset(self):
+        journal_pk = self.kwargs.get('journal_pk')
+        
+        # Get all publications that are part of any issue in this journal
+        queryset = Publication.objects.filter(
+            issue_appearances__issue__journal_id=journal_pk,
+            is_published=True
+        ).distinct().select_related(
+            'author', 'author__user', 'stats', 'topic_branch', 'topic_branch__topic'
+        ).prefetch_related('mesh_terms', 'citations', 'references', 'issue_appearances')
+        
+        # Filter by publication type
+        pub_type = self.request.query_params.get('type', None)
+        if pub_type:
+            queryset = queryset.filter(publication_type=pub_type)
+        
+        # Filter by issue
+        issue_id = self.request.query_params.get('issue', None)
+        if issue_id:
+            queryset = queryset.filter(issue_appearances__issue_id=issue_id)
+        
+        # Search
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(abstract__icontains=search) |
+                Q(co_authors__icontains=search)
+            )
+        
+        return queryset
+    
+    @extend_schema(
+        tags=['Public Publications'],
+        summary='List Journal Publications (Public)',
+        description='Retrieve all published publications for a specific journal. No authentication required.',
+        parameters=[
+            OpenApiParameter(
+                name='journal_pk',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='Journal ID',
+                required=True,
+            ),
+            OpenApiParameter(
+                name='type',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by publication type',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='issue',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by issue ID',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search in title, abstract, or co-authors',
+                required=False,
+            ),
+        ],
+        responses={
+            200: PublicationListSerializer(many=True),
+            404: OpenApiResponse(description='Journal not found'),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        # Verify journal exists
+        journal_pk = self.kwargs.get('journal_pk')
+        if not Journal.objects.filter(pk=journal_pk).exists():
+            return Response(
+                {'error': 'Journal not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        return super().get(request, *args, **kwargs)

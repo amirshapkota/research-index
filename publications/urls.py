@@ -28,9 +28,19 @@ from .views import (
     JournalQuestionnaireCreateView,
     JournalQuestionnaireDetailView,
     JournalQuestionnaireListView,
+    # Public views
+    PublicPublicationsListView,
+    JournalPublicationsListView,
 )
 
 urlpatterns = [
+    # ==================== PUBLIC ENDPOINTS ====================
+    # Public publications list (no auth required)
+    path('public/', PublicPublicationsListView.as_view(), name='public-publications-list'),
+    
+    # Public journal publications (no auth required)
+    path('journals/<int:journal_pk>/publications/', JournalPublicationsListView.as_view(), name='journal-publications-list'),
+    
     # ==================== TOPICS ====================
     # Topic CRUD
     path('topics/', TopicListCreateView.as_view(), name='topic-list-create'),

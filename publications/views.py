@@ -162,7 +162,7 @@ class TopicTreeView(APIView):
     Returns an array of topics with their branch hierarchies.
     Supports search by topic name, branch name, or description.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     @extend_schema(
         tags=['Topics'],

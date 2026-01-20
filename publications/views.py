@@ -1876,3 +1876,241 @@ class JournalPublicationsListView(generics.ListAPIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         return super().get(request, *args, **kwargs)
+
+
+class PublicPublicationDetailView(generics.RetrieveAPIView):
+    """
+    Retrieve a single published publication (public access).
+    No authentication required.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = PublicationDetailSerializer
+    lookup_field = 'pk'
+    
+    def get_queryset(self):
+        # Only return published publications
+        return Publication.objects.filter(
+            is_published=True
+        ).select_related(
+            'author', 'author__user', 'stats', 'topic_branch', 'topic_branch__topic', 'erratum_from'
+        ).prefetch_related('mesh_terms', 'citations', 'references', 'link_outs')
+    
+    @extend_schema(
+        tags=['Public Publications'],
+        summary='Get Publication Details (Public)',
+        description='Retrieve complete information about a single published publication. No authentication required.',
+        responses={
+            200: PublicationDetailSerializer,
+            404: OpenApiResponse(description='Publication not found or not published'),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
+class PublicJournalsListView(generics.ListAPIView):
+    """
+    List all active journals publicly (no authentication required).
+    Supports filtering and search.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = JournalListSerializer
+    
+    def get_queryset(self):
+        queryset = Journal.objects.filter(
+            is_active=True
+        ).select_related('institution', 'stats').prefetch_related('editorial_board', 'issues')
+        
+        # Filter by institution
+        institution_id = self.request.query_params.get('institution', None)
+        if institution_id:
+            queryset = queryset.filter(institution_id=institution_id)
+        
+        # Filter by open access
+        is_open_access = self.request.query_params.get('open_access', None)
+        if is_open_access is not None:
+            queryset = queryset.filter(is_open_access=is_open_access.lower() == 'true')
+        
+        # Filter by peer reviewed
+        peer_reviewed = self.request.query_params.get('peer_reviewed', None)
+        if peer_reviewed is not None:
+            queryset = queryset.filter(peer_reviewed=peer_reviewed.lower() == 'true')
+        
+        # Search by title or description
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(short_title__icontains=search) |
+                Q(description__icontains=search) |
+                Q(publisher_name__icontains=search)
+            )
+        
+        return queryset
+    
+    @extend_schema(
+        tags=['Public Journals'],
+        summary='List All Journals (Public)',
+        description='Retrieve all active journals. No authentication required. Supports filtering and search.',
+        parameters=[
+            OpenApiParameter(
+                name='institution',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by institution ID',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='open_access',
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description='Filter by open access status (true/false)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='peer_reviewed',
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description='Filter by peer reviewed status (true/false)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search in title, description, or publisher name',
+                required=False,
+            ),
+        ],
+        responses={200: JournalListSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
+class PublicJournalDetailView(generics.RetrieveAPIView):
+    """
+    Retrieve a single journal (public access).
+    No authentication required.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = JournalDetailSerializer
+    lookup_field = 'pk'
+    
+    def get_queryset(self):
+        # Only return active journals
+        return Journal.objects.filter(
+            is_active=True
+        ).select_related('institution', 'stats').prefetch_related('editorial_board', 'issues')
+    
+    @extend_schema(
+        tags=['Public Journals'],
+        summary='Get Journal Details (Public)',
+        description='Retrieve complete information about a single journal. No authentication required.',
+        responses={
+            200: JournalDetailSerializer,
+            404: OpenApiResponse(description='Journal not found or not active'),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
+# ==================== PUBLIC INSTITUTION VIEWS ====================
+
+class PublicInstitutionsListView(generics.ListAPIView):
+    """
+    List all institutions publicly (no authentication required).
+    Supports filtering and search.
+    """
+    permission_classes = [AllowAny]
+    
+    def get_queryset(self):
+        from users.models import Institution
+        queryset = Institution.objects.select_related('user', 'stats').prefetch_related('journals')
+        
+        # Filter by country
+        country = self.request.query_params.get('country', None)
+        if country:
+            queryset = queryset.filter(country__iexact=country)
+        
+        # Filter by institution type
+        institution_type = self.request.query_params.get('type', None)
+        if institution_type:
+            queryset = queryset.filter(institution_type=institution_type)
+        
+        # Search by name, city, or description
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(institution_name__icontains=search) |
+                Q(city__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        from users.serializers import InstitutionListSerializer
+        return InstitutionListSerializer
+    
+    @extend_schema(
+        tags=['Public Institutions'],
+        summary='List All Institutions (Public)',
+        description='Retrieve all institutions. No authentication required. Supports filtering and search.',
+        parameters=[
+            OpenApiParameter(
+                name='country',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by country name',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='type',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by institution type (university, research_institute, hospital, etc.)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search in institution name, city, or description',
+                required=False,
+            ),
+        ],
+        responses={200: OpenApiResponse(description='List of institutions')}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
+class PublicInstitutionDetailView(generics.RetrieveAPIView):
+    """
+    Retrieve a single institution (public access).
+    No authentication required.
+    """
+    permission_classes = [AllowAny]
+    lookup_field = 'pk'
+    
+    def get_queryset(self):
+        from users.models import Institution
+        return Institution.objects.select_related('user', 'stats').prefetch_related('journals')
+    
+    def get_serializer_class(self):
+        from users.serializers import InstitutionDetailSerializer
+        return InstitutionDetailSerializer
+    
+    @extend_schema(
+        tags=['Public Institutions'],
+        summary='Get Institution Details (Public)',
+        description='Retrieve complete information about a single institution including journals and stats. No authentication required.',
+        responses={
+            200: OpenApiResponse(description='Institution details'),
+            404: OpenApiResponse(description='Institution not found'),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)

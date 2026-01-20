@@ -271,6 +271,88 @@ class InstitutionProfileSerializer(serializers.ModelSerializer):
         return InstitutionStatsSerializer(stats).data
 
 
+class InstitutionListSerializer(serializers.ModelSerializer):
+    """Serializer for listing institutions publicly."""
+    logo_url = serializers.SerializerMethodField()
+    journals_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Institution
+        fields = [
+            'id',
+            'institution_name',
+            'institution_type',
+            'logo_url',
+            'description',
+            'city',
+            'state',
+            'country',
+            'website',
+            'established_year',
+            'research_areas',
+            'journals_count',
+        ]
+    
+    def get_logo_url(self, obj):
+        if obj.logo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo.url)
+            return obj.logo.url
+        return None
+    
+    def get_journals_count(self, obj):
+        return obj.journals.filter(is_active=True).count()
+
+
+class InstitutionDetailSerializer(serializers.ModelSerializer):
+    """Serializer for institution detail view (public)."""
+    logo_url = serializers.SerializerMethodField()
+    stats = serializers.SerializerMethodField()
+    journals_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Institution
+        fields = [
+            'id',
+            'institution_name',
+            'institution_type',
+            'logo_url',
+            'description',
+            'address',
+            'city',
+            'state',
+            'country',
+            'postal_code',
+            'phone',
+            'website',
+            'established_year',
+            'research_areas',
+            'total_researchers',
+            'journals_count',
+            'stats',
+        ]
+    
+    def get_logo_url(self, obj):
+        if obj.logo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo.url)
+            return obj.logo.url
+        return None
+    
+    def get_journals_count(self, obj):
+        return obj.journals.filter(is_active=True).count()
+    
+    def get_stats(self, obj):
+        """Get institution stats if available"""
+        try:
+            stats = obj.stats
+            return InstitutionStatsSerializer(stats).data
+        except InstitutionStats.DoesNotExist:
+            return None
+
+
 # Account Settings Serializers
 
 class ChangePasswordSerializer(serializers.Serializer):

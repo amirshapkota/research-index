@@ -30,16 +30,28 @@ from .views import (
     JournalQuestionnaireListView,
     # Public views
     PublicPublicationsListView,
+    PublicPublicationDetailView,
     JournalPublicationsListView,
+    PublicJournalsListView,
+    PublicJournalDetailView,
+    PublicInstitutionsListView,
+    PublicInstitutionDetailView,
 )
 
 urlpatterns = [
     # ==================== PUBLIC ENDPOINTS ====================
-    # Public publications list (no auth required)
+    # Public publications (no auth required)
     path('public/', PublicPublicationsListView.as_view(), name='public-publications-list'),
+    path('public/<int:pk>/', PublicPublicationDetailView.as_view(), name='public-publication-detail'),
     
-    # Public journal publications (no auth required)
+    # Public journals (no auth required)
+    path('journals/public/', PublicJournalsListView.as_view(), name='public-journals-list'),
+    path('journals/public/<int:pk>/', PublicJournalDetailView.as_view(), name='public-journal-detail'),
     path('journals/<int:journal_pk>/publications/', JournalPublicationsListView.as_view(), name='journal-publications-list'),
+    
+    # Public institutions (no auth required)
+    path('institutions/public/', PublicInstitutionsListView.as_view(), name='public-institutions-list'),
+    path('institutions/public/<int:pk>/', PublicInstitutionDetailView.as_view(), name='public-institution-detail'),
     
     # ==================== TOPICS ====================
     # Topic CRUD

@@ -76,8 +76,11 @@ class TopicBranchCreateUpdateSerializer(serializers.ModelSerializer):
         return value
     
     def validate(self, data):
-        """Validate hierarchy constraints."""
+        """Validate hierarchy constraints and prevent duplicates at same level."""
         parent = data.get('parent')
+        topic = data.get('topic', getattr(self.instance, 'topic', None))
+        name = data.get('name')
+        
         if parent:
             # Check depth limit
             if parent.level >= 4:
@@ -85,57 +88,58 @@ class TopicBranchCreateUpdateSerializer(serializers.ModelSerializer):
                     'parent': 'Maximum hierarchy depth is 4 levels. Cannot add child to level 4 branch.'
                 })
             # Ensure parent belongs to same topic
-            topic = data.get('topic', getattr(self.instance, 'topic', None))
             if topic and parent.topic != topic:
                 raise serializers.ValidationError({
                     'parent': 'Parent branch must belong to the same topic.'
                 })
+        
+        # Check for duplicate names at the same hierarchical level
+        if name:
+            from .models import TopicBranch
+            query = TopicBranch.objects.filter(
+                topic=topic,
+                parent=parent,
+                name__iexact=name  # Case-insensitive comparison
+            )
+            # Exclude current instance when updating
+            if self.instance:
+                query = query.exclude(pk=self.instance.pk)
+            
+            if query.exists():
+                level_desc = f"under parent '{parent.name}'" if parent else "at the root level"
+                raise serializers.ValidationError({
+                    'name': f"A branch named '{name}' already exists {level_desc} in this topic. Please choose a different name."
+                })
+        
         return data
     
     def create(self, validated_data):
         """Auto-generate slug from name if not provided."""
         if not validated_data.get('slug'):
-            base = slugify(validated_data['name'])
-            slug = base
-            # Ensure uniqueness within same topic and parent
-            topic = validated_data.get('topic')
-            parent = validated_data.get('parent')
-            i = 1
-            from .models import TopicBranch
-
-            while TopicBranch.objects.filter(topic=topic, parent=parent, slug=slug).exists():
-                i += 1
-                slug = f"{base}-{i}"
-            validated_data['slug'] = slug
+            validated_data['slug'] = slugify(validated_data['name'])
         try:
             return super().create(validated_data)
         except Exception as e:
-            # Convert DB integrity errors into serializer validation errors when possible
+            # Convert DB integrity errors into serializer validation errors
             from django.db import IntegrityError
             if isinstance(e, IntegrityError):
-                raise serializers.ValidationError({"slug": ["A branch with this slug already exists for the given topic/parent."]})
+                raise serializers.ValidationError({
+                    "slug": ["A branch with this slug already exists for the given topic/parent."]
+                })
             raise
     
     def update(self, instance, validated_data):
         """Auto-generate slug from name if not provided during update."""
         if 'slug' in validated_data and not validated_data['slug']:
-            base = slugify(validated_data.get('name', instance.name))
-            slug = base
-            topic = validated_data.get('topic', instance.topic)
-            parent = validated_data.get('parent', instance.parent)
-            i = 1
-            from .models import TopicBranch
-
-            while TopicBranch.objects.filter(topic=topic, parent=parent, slug=slug).exclude(pk=instance.pk).exists():
-                i += 1
-                slug = f"{base}-{i}"
-            validated_data['slug'] = slug
+            validated_data['slug'] = slugify(validated_data.get('name', instance.name))
         try:
             return super().update(instance, validated_data)
         except Exception as e:
             from django.db import IntegrityError
             if isinstance(e, IntegrityError):
-                raise serializers.ValidationError({"slug": ["A branch with this slug already exists for the given topic/parent."]})
+                raise serializers.ValidationError({
+                    "slug": ["A branch with this slug already exists for the given topic/parent."]
+                })
             raise
 
 
@@ -223,22 +227,51 @@ class TopicCreateUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
     
     def validate_slug(self, value):
-        """Ensure slug is lowercase and URL-friendly, or auto-generate from name."""
+        """Ensure slug is lowercase and URL-friendly."""
         if value:
             return value.lower().strip()
+        return value
+    
+    def validate_name(self, value):
+        """Validate that topic name is unique (case-insensitive)."""
+        query = Topic.objects.filter(name__iexact=value)
+        # Exclude current instance when updating
+        if self.instance:
+            query = query.exclude(pk=self.instance.pk)
+        
+        if query.exists():
+            raise serializers.ValidationError(
+                f"A topic named '{value}' already exists. Please choose a different name."
+            )
         return value
     
     def create(self, validated_data):
         """Auto-generate slug from name if not provided."""
         if not validated_data.get('slug'):
             validated_data['slug'] = slugify(validated_data['name'])
-        return super().create(validated_data)
+        try:
+            return super().create(validated_data)
+        except Exception as e:
+            from django.db import IntegrityError
+            if isinstance(e, IntegrityError):
+                raise serializers.ValidationError({
+                    "name": ["A topic with this name already exists."]
+                })
+            raise
     
     def update(self, instance, validated_data):
         """Auto-generate slug from name if not provided during update."""
         if 'slug' in validated_data and not validated_data['slug']:
             validated_data['slug'] = slugify(validated_data.get('name', instance.name))
-        return super().update(instance, validated_data)
+        try:
+            return super().update(instance, validated_data)
+        except Exception as e:
+            from django.db import IntegrityError
+            if isinstance(e, IntegrityError):
+                raise serializers.ValidationError({
+                    "name": ["A topic with this name already exists."]
+                })
+            raise
 
 
 class TopicTreeSerializer(serializers.Serializer):

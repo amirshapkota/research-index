@@ -399,9 +399,9 @@ class PublicationListSerializer(serializers.ModelSerializer):
     references_count = serializers.SerializerMethodField()
     
     # Journal information
-    journal_id = serializers.IntegerField(source='journal.id', read_only=True, allow_null=True)
-    journal_name = serializers.CharField(source='journal.title', read_only=True, allow_null=True)
-    journal_issn = serializers.CharField(source='journal.issn', read_only=True, allow_null=True)
+    journal_id = serializers.IntegerField(source='journal.id', read_only=True)
+    journal_name = serializers.CharField(source='journal.title', read_only=True)
+    journal_issn = serializers.CharField(source='journal.issn', read_only=True)
     
     # Topic information
     topic_branch_id = serializers.IntegerField(source='topic_branch.id', read_only=True, allow_null=True)
@@ -465,9 +465,9 @@ class PublicationDetailSerializer(serializers.ModelSerializer):
     topic_branch = TopicBranchDetailSerializer(read_only=True)
     
     # Journal information
-    journal_id = serializers.IntegerField(source='journal.id', read_only=True, allow_null=True)
-    journal_title = serializers.CharField(source='journal.title', read_only=True, allow_null=True)
-    journal_issn = serializers.CharField(source='journal.issn', read_only=True, allow_null=True)
+    journal_id = serializers.IntegerField(source='journal.id', read_only=True)
+    journal_title = serializers.CharField(source='journal.title', read_only=True)
+    journal_issn = serializers.CharField(source='journal.issn', read_only=True)
     
     class Meta:
         model = Publication

@@ -36,9 +36,7 @@ class Publication(models.Model):
     published_date = models.DateField(blank=True, null=True, help_text="Publication date")
     journal = models.ForeignKey(
         'Journal',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        on_delete=models.CASCADE,
         related_name='journal_publications',
         help_text="Journal this publication belongs to"
     )

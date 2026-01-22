@@ -1,17 +1,21 @@
 # Journal ForeignKey Migration
 
 ## Overview
+
 Changed the `Publication` model to use a `ForeignKey` relationship to `Journal` instead of a plain `CharField` for journal name. This improves data integrity and enables better relational queries.
 
 ## Backend Changes
 
 ### Model Changes (`publications/models.py`)
+
 **Before:**
+
 ```python
 journal_name = models.CharField(max_length=300, blank=True, help_text="Journal or conference name")
 ```
 
 **After:**
+
 ```python
 journal = models.ForeignKey(
     'Journal',
@@ -26,19 +30,23 @@ journal = models.ForeignKey(
 ### Serializer Changes (`publications/serializers.py`)
 
 #### PublicationListSerializer
+
 - Added `journal_id` (journal.id)
 - Added `journal_name` (journal.title) - for backward compatibility
 - Added `journal_issn` (journal.issn)
 
 #### PublicationDetailSerializer
+
 - Includes `journal` (the ID for write operations)
 - Added `journal_id`, `journal_title`, `journal_issn` for read operations
 
 #### PublicationCreateUpdateSerializer
+
 - Changed `journal_name` field to `journal` (accepts integer ID)
 - Form data should now send `journal` as a number instead of `journal_name` as a string
 
 ### Migration
+
 ```bash
 python manage.py makemigrations
 # Created: publications/migrations/0006_remove_publication_journal_name_publication_journal.py
@@ -52,17 +60,19 @@ python manage.py migrate
 ### Type Changes (`frontend/features/panel/author/publications/types/index.ts`)
 
 **Publication Interface:**
+
 ```typescript
 // Removed: (nothing - journal_name still exists but is now computed from journal.title)
 
 // Added:
-journal: number | null;           // ForeignKey ID for write operations
-journal_id: number | null;        // Same as journal, for clarity
-journal_name: string | null;      // Computed from journal.title (read-only)
-journal_issn: string | null;      // From journal.issn (read-only)
+journal: number | null; // ForeignKey ID for write operations
+journal_id: number | null; // Same as journal, for clarity
+journal_name: string | null; // Computed from journal.title (read-only)
+journal_issn: string | null; // From journal.issn (read-only)
 ```
 
 **PublicationFormData Interface:**
+
 ```typescript
 // Removed:
 journal_name?: string;
@@ -72,6 +82,7 @@ journal?: number;
 ```
 
 ### Schema Changes (`frontend/features/panel/author/publications/schema/index.ts`)
+
 ```typescript
 // Removed:
 journal_name: z.string().optional().default(""),
@@ -83,18 +94,22 @@ journal: z.number().nullable().optional(),
 ### Component Changes
 
 #### PublicationFormDialog
+
 - Changed form field from text input for `journal_name` to number input for `journal`
 - Updated form data submission to send `journal` (number) instead of `journal_name` (string)
 - Updated default values to use `publication?.journal` instead of `publication?.journal_name`
 
 #### PublicationsList & ArticleCard
+
 - Components continue to work with `journal_name` field which is now populated from `journal.title` in the serializer
 - No changes needed as the serializer provides backward-compatible field names
 
 ## API Changes
 
 ### Request Format (Create/Update Publication)
+
 **Before:**
+
 ```json
 {
   "title": "My Publication",
@@ -104,16 +119,19 @@ journal: z.number().nullable().optional(),
 ```
 
 **After:**
+
 ```json
 {
   "title": "My Publication",
-  "journal": 5,  // Journal ID
+  "journal": 5, // Journal ID
   "volume": "10"
 }
 ```
 
 ### Response Format (List/Detail)
+
 **List Response:**
+
 ```json
 {
   "id": 1,
@@ -126,13 +144,14 @@ journal: z.number().nullable().optional(),
 ```
 
 **Detail Response:**
+
 ```json
 {
   "id": 1,
   "title": "My Publication",
   "journal": 5,
   "journal_id": 5,
-  "journal_name": "Nature",  // From journal.title
+  "journal_name": "Nature", // From journal.title
   "journal_issn": "0028-0836",
   "volume": "10"
 }
@@ -158,6 +177,7 @@ journal: z.number().nullable().optional(),
 ## Usage Example
 
 ### Creating a Publication with Journal
+
 ```python
 from publications.models import Publication, Journal
 
@@ -171,6 +191,7 @@ publication = Publication.objects.create(
 ```
 
 ### Querying Publications by Journal
+
 ```python
 # Get all publications for a specific journal
 journal_pubs = Publication.objects.filter(journal__id=5)

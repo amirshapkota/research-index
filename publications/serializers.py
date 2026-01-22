@@ -886,6 +886,37 @@ class IssueCreateUpdateSerializer(serializers.ModelSerializer):
             'editorial_note', 'guest_editors', 'status', 'is_special_issue'
         ]
     
+    def validate(self, attrs):
+        """
+        Validate that the combination of journal, volume, and issue_number is unique.
+        """
+        journal = self.context.get('journal')
+        volume = attrs.get('volume')
+        issue_number = attrs.get('issue_number')
+        
+        # Check for duplicates
+        if self.instance:
+            # Update case - exclude current instance from check
+            existing = Issue.objects.filter(
+                journal=journal,
+                volume=volume,
+                issue_number=issue_number
+            ).exclude(pk=self.instance.pk).exists()
+        else:
+            # Create case - check if combination exists
+            existing = Issue.objects.filter(
+                journal=journal,
+                volume=volume,
+                issue_number=issue_number
+            ).exists()
+        
+        if existing:
+            raise serializers.ValidationError({
+                'issue_number': f'An issue with Volume {volume}, Issue {issue_number} already exists for this journal.'
+            })
+        
+        return attrs
+    
     def create(self, validated_data):
         journal = self.context['journal']
         issue = Issue.objects.create(journal=journal, **validated_data)

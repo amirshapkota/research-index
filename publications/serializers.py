@@ -398,6 +398,11 @@ class PublicationListSerializer(serializers.ModelSerializer):
     citations_count = serializers.SerializerMethodField()
     references_count = serializers.SerializerMethodField()
     
+    # Journal information
+    journal_id = serializers.IntegerField(source='journal.id', read_only=True, allow_null=True)
+    journal_name = serializers.CharField(source='journal.title', read_only=True, allow_null=True)
+    journal_issn = serializers.CharField(source='journal.issn', read_only=True, allow_null=True)
+    
     # Topic information
     topic_branch_id = serializers.IntegerField(source='topic_branch.id', read_only=True, allow_null=True)
     topic_branch_name = serializers.CharField(source='topic_branch.name', read_only=True, allow_null=True)
@@ -408,9 +413,10 @@ class PublicationListSerializer(serializers.ModelSerializer):
         model = Publication
         fields = [
             'id', 'title', 'author_name', 'author_orcid', 'publication_type',
-            'publication_type_display', 'doi', 'published_date', 'journal_name',
-            'abstract', 'pdf_url', 'is_published', 'created_at', 'updated_at',
-            'stats', 'mesh_terms_count', 'citations_count', 'references_count',
+            'publication_type_display', 'doi', 'published_date', 'journal_id',
+            'journal_name', 'journal_issn', 'abstract', 'pdf_url', 'is_published',
+            'created_at', 'updated_at', 'stats', 'mesh_terms_count',
+            'citations_count', 'references_count',
             'topic_branch_id', 'topic_branch_name', 'topic_id', 'topic_name'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -458,13 +464,18 @@ class PublicationDetailSerializer(serializers.ModelSerializer):
     # Topic information
     topic_branch = TopicBranchDetailSerializer(read_only=True)
     
+    # Journal information
+    journal_id = serializers.IntegerField(source='journal.id', read_only=True, allow_null=True)
+    journal_title = serializers.CharField(source='journal.title', read_only=True, allow_null=True)
+    journal_issn = serializers.CharField(source='journal.issn', read_only=True, allow_null=True)
+    
     class Meta:
         model = Publication
         fields = [
             'id', 'title', 'abstract', 'publication_type', 'publication_type_display',
-            'pdf_file', 'pdf_url', 'doi', 'published_date', 'journal_name',
-            'volume', 'issue', 'pages', 'publisher', 'co_authors',
-            'erratum_from', 'erratum_from_title',
+            'pdf_file', 'pdf_url', 'doi', 'published_date', 'journal', 'journal_id',
+            'journal_title', 'journal_issn', 'volume', 'issue', 'pages', 'publisher',
+            'co_authors', 'erratum_from', 'erratum_from_title',
             'pubmed_id', 'arxiv_id', 'pubmed_central_id',
             'topic_branch',
             'is_published', 'created_at', 'updated_at',
@@ -504,7 +515,7 @@ class PublicationCreateUpdateSerializer(serializers.ModelSerializer):
         model = Publication
         fields = [
             'title', 'abstract', 'publication_type', 'pdf_file',
-            'doi', 'published_date', 'journal_name', 'volume', 'issue',
+            'doi', 'published_date', 'journal', 'volume', 'issue',
             'pages', 'publisher', 'co_authors', 'erratum_from',
             'pubmed_id', 'arxiv_id', 'pubmed_central_id', 'is_published',
             'topic_branch',

@@ -34,7 +34,14 @@ class Publication(models.Model):
     # Publication Details
     doi = models.CharField(max_length=255, blank=True, help_text="Digital Object Identifier", db_index=True)
     published_date = models.DateField(blank=True, null=True, help_text="Publication date")
-    journal_name = models.CharField(max_length=300, blank=True, help_text="Journal or conference name")
+    journal = models.ForeignKey(
+        'Journal',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='journal_publications',
+        help_text="Journal this publication belongs to"
+    )
     volume = models.CharField(max_length=50, blank=True)
     issue = models.CharField(max_length=50, blank=True)
     pages = models.CharField(max_length=50, blank=True, help_text="e.g., 123-145")

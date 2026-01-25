@@ -36,6 +36,8 @@ from .views import (
     PublicJournalDetailView,
     PublicInstitutionsListView,
     PublicInstitutionDetailView,
+    PublicAuthorsListView,
+    PublicAuthorDetailView,
 )
 
 urlpatterns = [
@@ -52,6 +54,10 @@ urlpatterns = [
     # Public institutions (no auth required)
     path('institutions/public/', PublicInstitutionsListView.as_view(), name='public-institutions-list'),
     path('institutions/public/<int:pk>/', PublicInstitutionDetailView.as_view(), name='public-institution-detail'),
+    
+    # Public authors (no auth required)
+    path('authors/public/', PublicAuthorsListView.as_view(), name='public-authors-list'),
+    path('authors/public/<int:pk>/', PublicAuthorDetailView.as_view(), name='public-author-detail'),
     
     # ==================== TOPICS ====================
     # Topic CRUD

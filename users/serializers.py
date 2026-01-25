@@ -353,6 +353,106 @@ class InstitutionDetailSerializer(serializers.ModelSerializer):
             return None
 
 
+class AuthorListSerializer(serializers.ModelSerializer):
+    """Serializer for listing authors publicly."""
+    profile_picture_url = serializers.SerializerMethodField()
+    publications_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Author
+        fields = [
+            'id',
+            'title',
+            'full_name',
+            'institute',
+            'designation',
+            'degree',
+            'profile_picture_url',
+            'bio',
+            'research_interests',
+            'orcid',
+            'google_scholar',
+            'publications_count',
+        ]
+    
+    def get_profile_picture_url(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+    
+    def get_publications_count(self, obj):
+        from publications.models import Publication
+        return Publication.objects.filter(author=obj, is_published=True).count()
+
+
+class AuthorDetailSerializer(serializers.ModelSerializer):
+    """Serializer for author detail view (public)."""
+    profile_picture_url = serializers.SerializerMethodField()
+    cv_url = serializers.SerializerMethodField()
+    stats = serializers.SerializerMethodField()
+    publications_count = serializers.SerializerMethodField()
+    coauthors = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Author
+        fields = [
+            'id',
+            'title',
+            'full_name',
+            'institute',
+            'designation',
+            'degree',
+            'gender',
+            'profile_picture_url',
+            'cv_url',
+            'bio',
+            'research_interests',
+            'orcid',
+            'google_scholar',
+            'researchgate',
+            'linkedin',
+            'website',
+            'publications_count',
+            'stats',
+            'coauthors',
+        ]
+    
+    def get_profile_picture_url(self, obj):
+        if obj.profile_picture:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
+        return None
+    
+    def get_cv_url(self, obj):
+        if obj.cv:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.cv.url)
+            return obj.cv.url
+        return None
+    
+    def get_publications_count(self, obj):
+        from publications.models import Publication
+        return Publication.objects.filter(author=obj, is_published=True).count()
+    
+    def get_stats(self, obj):
+        """Get author stats if available"""
+        try:
+            stats = obj.stats
+            return AuthorStatsSerializer(stats).data
+        except AuthorStats.DoesNotExist:
+            return None
+    
+    def get_coauthors(self, obj):
+        """Get list of co-authors"""
+        return obj.get_coauthors()[:10]  # Limit to top 10 co-authors
+
+
 # Account Settings Serializers
 
 class ChangePasswordSerializer(serializers.Serializer):

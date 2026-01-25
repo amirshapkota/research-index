@@ -2121,3 +2121,105 @@ class PublicInstitutionDetailView(generics.RetrieveAPIView):
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
+
+
+# ==================== PUBLIC AUTHOR VIEWS ====================
+
+class PublicAuthorsListView(generics.ListAPIView):
+    """
+    List all authors publicly (no authentication required).
+    Supports filtering and search.
+    """
+    permission_classes = [AllowAny]
+    
+    def get_queryset(self):
+        from users.models import Author
+        queryset = Author.objects.select_related('user', 'stats')
+        
+        # Filter by institute
+        institute = self.request.query_params.get('institute', None)
+        if institute:
+            queryset = queryset.filter(institute__icontains=institute)
+        
+        # Filter by designation
+        designation = self.request.query_params.get('designation', None)
+        if designation:
+            queryset = queryset.filter(designation__icontains=designation)
+        
+        # Search by name, institute, or research interests
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(full_name__icontains=search) |
+                Q(institute__icontains=search) |
+                Q(research_interests__icontains=search) |
+                Q(bio__icontains=search)
+            )
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        from users.serializers import AuthorListSerializer
+        return AuthorListSerializer
+    
+    @extend_schema(
+        tags=['Public Authors'],
+        summary='List All Authors (Public)',
+        description='Retrieve all authors. No authentication required. Supports filtering and search.',
+        parameters=[
+            OpenApiParameter(
+                name='institute',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by institute name',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='designation',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by designation',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search in author name, institute, bio, or research interests',
+                required=False,
+            ),
+        ],
+        responses={200: OpenApiResponse(description='List of authors')}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
+class PublicAuthorDetailView(generics.RetrieveAPIView):
+    """
+    Retrieve a single author (public access).
+    No authentication required.
+    """
+    permission_classes = [AllowAny]
+    lookup_field = 'pk'
+    
+    def get_queryset(self):
+        from users.models import Author
+        return Author.objects.select_related('user', 'stats')
+    
+    def get_serializer_class(self):
+        from users.serializers import AuthorDetailSerializer
+        return AuthorDetailSerializer
+    
+    @extend_schema(
+        tags=['Public Authors'],
+        summary='Get Author Details (Public)',
+        description='Retrieve complete information about a single author including stats, publications count, and co-authors. No authentication required.',
+        responses={
+            200: OpenApiResponse(description='Author details'),
+            404: OpenApiResponse(description='Author not found'),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+

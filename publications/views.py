@@ -1200,12 +1200,19 @@ class IssueListCreateView(generics.ListCreateAPIView):
     
     def get_queryset(self):
         journal_pk = self.kwargs.get('journal_pk')
-        try:
-            institution = Institution.objects.get(user=self.request.user)
-            journal = get_object_or_404(Journal, pk=journal_pk, institution=institution)
-            return Issue.objects.filter(journal=journal).prefetch_related('articles')
-        except Institution.DoesNotExist:
-            return Issue.objects.none()
+        journal = get_object_or_404(Journal, pk=journal_pk)
+        
+        # For POST requests (create), verify institution ownership
+        if self.request.method == 'POST':
+            try:
+                institution = Institution.objects.get(user=self.request.user)
+                if journal.institution != institution:
+                    return Issue.objects.none()
+            except Institution.DoesNotExist:
+                return Issue.objects.none()
+        
+        # For GET requests (list), allow anyone authenticated to view issues
+        return Issue.objects.filter(journal=journal).prefetch_related('articles')
     
     @extend_schema(
         tags=['Issues'],

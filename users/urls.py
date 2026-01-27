@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import (
+from .views.views import (
     AuthorRegistrationView,
     InstitutionRegistrationView,
     LoginView,
@@ -15,7 +15,7 @@ from .views import (
     DeleteAccountView,
     RefreshAuthorStatsView
 )
-from .follow_views import (
+from .views.follow.views import (
     FollowUserView,
     UnfollowUserView,
     MyFollowersView,

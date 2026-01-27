@@ -3,14 +3,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, OpenApiResponse
-from .serializers import (
+from ...serializers import (
     FollowSerializer,
     FollowCreateSerializer,
     FollowerListSerializer,
     FollowingListSerializer,
     FollowStatsSerializer,
 )
-from .models import CustomUser, Follow
+from ...models import CustomUser, Follow
 
 
 class FollowUserView(APIView):

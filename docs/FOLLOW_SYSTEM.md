@@ -1,11 +1,13 @@
 # Follow System Documentation
 
 ## Overview
+
 The follow system allows users (both authors and institutions) to follow each other, similar to social media platforms. This creates a network of connections and enables users to stay updated with activity from users they follow.
 
 ## Database Model
 
 ### Follow Model
+
 Located in `users/models.py`
 
 ```python
@@ -13,18 +15,20 @@ class Follow(models.Model):
     follower = ForeignKey(CustomUser)      # The user who is following
     following = ForeignKey(CustomUser)     # The user being followed
     created_at = DateTimeField()
-    
+
     # Constraints:
     # - unique_together: ['follower', 'following']
     # - Prevents self-following
 ```
 
 **Relationships:**
+
 - A user can follow multiple users (one-to-many from follower perspective)
 - A user can have multiple followers (one-to-many from following perspective)
 - Self-following is prevented through model validation
 
 **Indexes:**
+
 - `['follower', '-created_at']` - Efficiently query who a user follows
 - `['following', '-created_at']` - Efficiently query a user's followers
 
@@ -33,18 +37,21 @@ class Follow(models.Model):
 All follow endpoints require authentication (`IsAuthenticated` permission).
 
 ### 1. Follow a User
+
 **POST** `/api/auth/follow/`
 
 Follow another user (author or institution).
 
 **Request Body:**
+
 ```json
 {
-  "following": 5  // User ID to follow
+  "following": 5 // User ID to follow
 }
 ```
 
 **Response (201 Created):**
+
 ```json
 {
   "message": "Successfully followed user",
@@ -80,17 +87,20 @@ Follow another user (author or institution).
 ```
 
 **Errors:**
+
 - `400 Bad Request`: Already following this user or trying to follow yourself
 - `404 Not Found`: User to follow does not exist
 
 ---
 
 ### 2. Unfollow a User
+
 **DELETE** `/api/auth/unfollow/<user_id>/`
 
 Unfollow a user you are currently following.
 
 **Response (200 OK):**
+
 ```json
 {
   "message": "Successfully unfollowed user"
@@ -98,16 +108,19 @@ Unfollow a user you are currently following.
 ```
 
 **Errors:**
+
 - `404 Not Found`: Not following this user or user doesn't exist
 
 ---
 
 ### 3. My Followers
+
 **GET** `/api/auth/followers/`
 
 Get a list of all users following you.
 
 **Response (200 OK):**
+
 ```json
 [
   {
@@ -132,11 +145,13 @@ Get a list of all users following you.
 ---
 
 ### 4. Users I Follow
+
 **GET** `/api/auth/following/`
 
 Get a list of all users you are following.
 
 **Response (200 OK):**
+
 ```json
 [
   {
@@ -162,6 +177,7 @@ Get a list of all users you are following.
 ---
 
 ### 5. User's Followers
+
 **GET** `/api/auth/users/<user_id>/followers/`
 
 Get followers of a specific user.
@@ -171,6 +187,7 @@ Get followers of a specific user.
 ---
 
 ### 6. User's Following
+
 **GET** `/api/auth/users/<user_id>/following/`
 
 Get users that a specific user is following.
@@ -180,11 +197,13 @@ Get users that a specific user is following.
 ---
 
 ### 7. My Follow Statistics
+
 **GET** `/api/auth/follow-stats/`
 
 Get follow statistics for the current user.
 
 **Response (200 OK):**
+
 ```json
 {
   "followers_count": 125,
@@ -195,11 +214,13 @@ Get follow statistics for the current user.
 ---
 
 ### 8. User Follow Statistics
+
 **GET** `/api/auth/users/<user_id>/follow-stats/`
 
 Get follow statistics for a specific user and check if you're following them.
 
 **Response (200 OK):**
+
 ```json
 {
   "followers_count": 125,
@@ -215,7 +236,9 @@ Get follow statistics for a specific user and check if you're following them.
 ## Serializers
 
 ### UserBasicSerializer
+
 Provides basic user information for follow lists:
+
 - `id`: User ID
 - `email`: User email
 - `user_type`: "author", "institution", or "admin"
@@ -224,18 +247,23 @@ Provides basic user information for follow lists:
 - `user_profile_type`: Type-specific profile info
 
 ### FollowSerializer
+
 Detailed follow relationship with full user information.
 
 ### FollowCreateSerializer
+
 For creating new follow relationships with validation.
 
 ### FollowerListSerializer
+
 List of followers with basic user details.
 
 ### FollowingListSerializer
+
 List of users being followed with basic user details.
 
 ### FollowStatsSerializer
+
 Follow statistics (counts and is_following flag).
 
 ---
@@ -245,17 +273,18 @@ Follow statistics (counts and is_following flag).
 ### Frontend Integration
 
 #### Follow a User
+
 ```typescript
 const followUser = async (userId: number) => {
-  const response = await fetch('/api/auth/follow/', {
-    method: 'POST',
+  const response = await fetch("/api/auth/follow/", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({ following: userId }),
-    credentials: 'include', // Include cookies
+    credentials: "include", // Include cookies
   });
-  
+
   if (response.ok) {
     const data = await response.json();
     console.log(data.message); // "Successfully followed user"
@@ -264,24 +293,26 @@ const followUser = async (userId: number) => {
 ```
 
 #### Get Followers
+
 ```typescript
 const getMyFollowers = async () => {
-  const response = await fetch('/api/auth/followers/', {
-    credentials: 'include',
+  const response = await fetch("/api/auth/followers/", {
+    credentials: "include",
   });
-  
+
   const followers = await response.json();
   return followers;
 };
 ```
 
 #### Check Follow Status
+
 ```typescript
 const checkFollowStatus = async (userId: number) => {
   const response = await fetch(`/api/auth/users/${userId}/follow-stats/`, {
-    credentials: 'include',
+    credentials: "include",
   });
-  
+
   const stats = await response.json();
   return stats.is_following; // true or false
 };
@@ -292,13 +323,16 @@ const checkFollowStatus = async (userId: number) => {
 ## Business Logic
 
 ### Follow Rules
+
 1. **No Self-Following**: Users cannot follow themselves
 2. **Unique Relationships**: Each follower-following pair is unique (database constraint)
 3. **Cross-Type Following**: Authors can follow institutions and vice versa
 4. **Automatic Validation**: Duplicate follow attempts return appropriate error messages
 
 ### Query Optimization
+
 All list views use `select_related()` to minimize database queries:
+
 ```python
 Follow.objects.filter(following=user).select_related(
     'follower',
@@ -314,12 +348,14 @@ This ensures efficient retrieval of user profiles in a single query.
 ## Admin Interface
 
 The Follow model is registered in Django admin with custom display:
+
 - Shows follower email, type, following email, and type
 - Filterable by user type and creation date
 - Searchable by email addresses
 - Read-only created_at field
 
 **Admin Features:**
+
 ```python
 class FollowAdmin(admin.ModelAdmin):
     list_display = ['follower_email', 'follower_type', 'following_email', 'following_type', 'created_at']
@@ -334,6 +370,7 @@ class FollowAdmin(admin.ModelAdmin):
 Migration file: `users/migrations/0006_follow.py`
 
 Creates:
+
 - Follow table with follower and following foreign keys
 - Unique constraint on (follower, following)
 - Indexes for efficient querying

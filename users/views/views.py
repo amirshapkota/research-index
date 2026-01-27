@@ -9,7 +9,7 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, Bl
 from django.contrib.auth import authenticate
 from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
-from .serializers import (
+from ..serializers import (
     AuthorRegistrationSerializer, 
     InstitutionRegistrationSerializer,
     LoginSerializer,
@@ -24,7 +24,7 @@ from .serializers import (
     InstitutionStatsSerializer,
     AdminStatsSerializer
 )
-from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats, AdminStats
+from ..models import CustomUser, Author, Institution, AuthorStats, InstitutionStats, AdminStats
 
 
 def set_auth_cookies(response, access_token, refresh_token):

@@ -193,6 +193,26 @@ class AuthorProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'email', 'user_type', 'stats', 'coauthors', 'collaboration_count']
     
+    def to_representation(self, instance):
+        """Convert research_interests string to array for frontend"""
+        data = super().to_representation(instance)
+        if data.get('research_interests'):
+            data['research_interests'] = [
+                interest.strip() 
+                for interest in data['research_interests'].split(',') 
+                if interest.strip()
+            ]
+        else:
+            data['research_interests'] = []
+        return data
+    
+    def to_internal_value(self, data):
+        """Convert research_interests array to comma-separated string"""
+        if 'research_interests' in data and isinstance(data['research_interests'], list):
+            data = data.copy()
+            data['research_interests'] = ', '.join(filter(None, data['research_interests']))
+        return super().to_internal_value(data)
+    
     def get_profile_picture_url(self, obj):
         if obj.profile_picture:
             request = self.context.get('request')
@@ -254,6 +274,26 @@ class InstitutionProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'email', 'user_type', 'stats']
     
+    def to_representation(self, instance):
+        """Convert research_areas string to array for frontend"""
+        data = super().to_representation(instance)
+        if data.get('research_areas'):
+            data['research_areas'] = [
+                area.strip() 
+                for area in data['research_areas'].split(',') 
+                if area.strip()
+            ]
+        else:
+            data['research_areas'] = []
+        return data
+    
+    def to_internal_value(self, data):
+        """Convert research_areas array to comma-separated string"""
+        if 'research_areas' in data and isinstance(data['research_areas'], list):
+            data = data.copy()
+            data['research_areas'] = ', '.join(filter(None, data['research_areas']))
+        return super().to_internal_value(data)
+    
     def get_logo_url(self, obj):
         if obj.logo:
             request = self.context.get('request')
@@ -292,6 +332,19 @@ class InstitutionListSerializer(serializers.ModelSerializer):
             'research_areas',
             'journals_count',
         ]
+    
+    def to_representation(self, instance):
+        """Convert research_areas string to array for frontend"""
+        data = super().to_representation(instance)
+        if data.get('research_areas'):
+            data['research_areas'] = [
+                area.strip() 
+                for area in data['research_areas'].split(',') 
+                if area.strip()
+            ]
+        else:
+            data['research_areas'] = []
+        return data
     
     def get_logo_url(self, obj):
         if obj.logo:
@@ -332,6 +385,19 @@ class InstitutionDetailSerializer(serializers.ModelSerializer):
             'journals_count',
             'stats',
         ]
+    
+    def to_representation(self, instance):
+        """Convert research_areas string to array for frontend"""
+        data = super().to_representation(instance)
+        if data.get('research_areas'):
+            data['research_areas'] = [
+                area.strip() 
+                for area in data['research_areas'].split(',') 
+                if area.strip()
+            ]
+        else:
+            data['research_areas'] = []
+        return data
     
     def get_logo_url(self, obj):
         if obj.logo:
@@ -374,6 +440,19 @@ class AuthorListSerializer(serializers.ModelSerializer):
             'google_scholar',
             'publications_count',
         ]
+    
+    def to_representation(self, instance):
+        """Convert research_interests string to array for frontend"""
+        data = super().to_representation(instance)
+        if data.get('research_interests'):
+            data['research_interests'] = [
+                interest.strip() 
+                for interest in data['research_interests'].split(',') 
+                if interest.strip()
+            ]
+        else:
+            data['research_interests'] = []
+        return data
     
     def get_profile_picture_url(self, obj):
         if obj.profile_picture:
@@ -419,6 +498,19 @@ class AuthorDetailSerializer(serializers.ModelSerializer):
             'stats',
             'coauthors',
         ]
+    
+    def to_representation(self, instance):
+        """Convert research_interests string to array for frontend"""
+        data = super().to_representation(instance)
+        if data.get('research_interests'):
+            data['research_interests'] = [
+                interest.strip() 
+                for interest in data['research_interests'].split(',') 
+                if interest.strip()
+            ]
+        else:
+            data['research_interests'] = []
+        return data
     
     def get_profile_picture_url(self, obj):
         if obj.profile_picture:

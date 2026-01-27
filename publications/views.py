@@ -2263,3 +2263,169 @@ class PublicAuthorDetailView(generics.RetrieveAPIView):
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
+
+class PublicAuthorPublicationsView(generics.ListAPIView):
+    """
+    List all publications for a specific author (public access).
+    No authentication required.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = PublicationListSerializer
+    
+    def get_queryset(self):
+        author_id = self.kwargs.get('author_pk')
+        queryset = Publication.objects.filter(
+            author_id=author_id,
+            is_published=True
+        ).select_related(
+            'author__user', 'journal', 'topic_branch__topic', 'stats'
+        ).prefetch_related(
+            'mesh_terms', 'citations', 'references', 'link_outs'
+        ).order_by('-published_date')
+        
+        # Filter by publication type
+        pub_type = self.request.query_params.get('type', None)
+        if pub_type:
+            queryset = queryset.filter(publication_type=pub_type)
+        
+        # Filter by topic branch
+        topic_branch = self.request.query_params.get('topic_branch', None)
+        if topic_branch:
+            queryset = queryset.filter(topic_branch_id=topic_branch)
+        
+        # Search by title or abstract
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(abstract__icontains=search)
+            )
+        
+        return queryset
+    
+    @extend_schema(
+        tags=['Public Authors'],
+        summary='List Author Publications (Public)',
+        description='Retrieve all publications for a specific author. No authentication required.',
+        parameters=[
+            OpenApiParameter(
+                name='author_pk',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='Author ID',
+                required=True,
+            ),
+            OpenApiParameter(
+                name='type',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by publication type',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='topic_branch',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by topic branch ID',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search in title or abstract',
+                required=False,
+            ),
+        ],
+        responses={200: PublicationListSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
+class PublicInstitutionPublicationsView(generics.ListAPIView):
+    """
+    List all publications for authors from a specific institution (public access).
+    No authentication required.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = PublicationListSerializer
+    
+    def get_queryset(self):
+        institution_id = self.kwargs.get('institution_pk')
+        
+        # Get all authors from this institution
+        from users.models import Author
+        author_ids = Author.objects.filter(
+            institution_id=institution_id
+        ).values_list('id', flat=True)
+        
+        queryset = Publication.objects.filter(
+            author_id__in=author_ids,
+            is_published=True
+        ).select_related(
+            'author__user', 'journal', 'topic_branch__topic', 'stats'
+        ).prefetch_related(
+            'mesh_terms', 'citations', 'references', 'link_outs'
+        ).order_by('-published_date')
+        
+        # Filter by publication type
+        pub_type = self.request.query_params.get('type', None)
+        if pub_type:
+            queryset = queryset.filter(publication_type=pub_type)
+        
+        # Filter by topic branch
+        topic_branch = self.request.query_params.get('topic_branch', None)
+        if topic_branch:
+            queryset = queryset.filter(topic_branch_id=topic_branch)
+        
+        # Search by title or abstract
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(abstract__icontains=search) |
+                Q(author__full_name__icontains=search)
+            )
+        
+        return queryset
+    
+    @extend_schema(
+        tags=['Public Institutions'],
+        summary='List Institution Publications (Public)',
+        description='Retrieve all publications from authors belonging to a specific institution. No authentication required.',
+        parameters=[
+            OpenApiParameter(
+                name='institution_pk',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='Institution ID',
+                required=True,
+            ),
+            OpenApiParameter(
+                name='type',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by publication type',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='topic_branch',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by topic branch ID',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search in title, abstract, or author name',
+                required=False,
+            ),
+        ],
+        responses={200: PublicationListSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+

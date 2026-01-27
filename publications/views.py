@@ -1022,6 +1022,10 @@ class JournalDetailView(APIView):
         if not journal:
             return Response({'error': 'Journal not found'}, status=status.HTTP_404_NOT_FOUND)
         
+        # Refresh stats on every profile fetch
+        stats, created = JournalStats.objects.get_or_create(journal=journal)
+        stats.update_stats()
+        
         serializer = JournalDetailSerializer(journal, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
     

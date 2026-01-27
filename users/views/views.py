@@ -537,6 +537,11 @@ class AuthorProfileView(APIView):
     def get(self, request):
         try:
             author = Author.objects.get(user=request.user)
+            
+            # Refresh stats on every profile fetch
+            stats, created = AuthorStats.objects.get_or_create(author=author)
+            stats.update_stats()
+            
             serializer = AuthorProfileSerializer(author, context={'request': request})
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Author.DoesNotExist:

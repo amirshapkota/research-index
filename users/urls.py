@@ -15,6 +15,15 @@ from .views import (
     DeleteAccountView,
     RefreshAuthorStatsView
 )
+from .follow_views import (
+    FollowUserView,
+    UnfollowUserView,
+    MyFollowersView,
+    MyFollowingView,
+    UserFollowersView,
+    UserFollowingView,
+    FollowStatsView,
+)
 
 urlpatterns = [
     # Registration endpoints
@@ -40,4 +49,14 @@ urlpatterns = [
     path('settings/account-status/', AccountStatusView.as_view(), name='account-status'),
     path('settings/deactivate-account/', DeactivateAccountView.as_view(), name='deactivate-account'),
     path('settings/delete-account/', DeleteAccountView.as_view(), name='delete-account'),
+    
+    # Follow endpoints
+    path('follow/', FollowUserView.as_view(), name='follow-user'),
+    path('unfollow/<int:user_id>/', UnfollowUserView.as_view(), name='unfollow-user'),
+    path('followers/', MyFollowersView.as_view(), name='my-followers'),
+    path('following/', MyFollowingView.as_view(), name='my-following'),
+    path('users/<int:user_id>/followers/', UserFollowersView.as_view(), name='user-followers'),
+    path('users/<int:user_id>/following/', UserFollowingView.as_view(), name='user-following'),
+    path('follow-stats/', FollowStatsView.as_view(), name='my-follow-stats'),
+    path('users/<int:user_id>/follow-stats/', FollowStatsView.as_view(), name='user-follow-stats'),
 ]

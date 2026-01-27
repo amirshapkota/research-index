@@ -586,3 +586,43 @@ class InstitutionStats(models.Model):
         self.save()
 
 
+class Follow(models.Model):
+    """
+    Follow relationship between users.
+    Allows authors to follow other authors and institutions.
+    Allows institutions to follow authors and other institutions.
+    """
+    follower = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='following',
+        help_text="The user who is following"
+    )
+    following = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='followers',
+        help_text="The user being followed"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ['follower', 'following']
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['follower', '-created_at']),
+            models.Index(fields=['following', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.follower.email} follows {self.following.email}"
+    
+    def clean(self):
+        """Prevent users from following themselves."""
+        from django.core.exceptions import ValidationError
+        if self.follower == self.following:
+            raise ValidationError("Users cannot follow themselves.")
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)

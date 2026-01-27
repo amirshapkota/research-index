@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
-from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats, AdminStats
+from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats, AdminStats, Follow
 
 
 class AuthorRegistrationSerializer(serializers.ModelSerializer):
@@ -526,3 +526,114 @@ class DeleteAccountSerializer(serializers.Serializer):
         if value != "DELETE MY ACCOUNT":
             raise serializers.ValidationError('You must type "DELETE MY ACCOUNT" to confirm deletion.')
         return value
+
+
+# ==================== FOLLOW SERIALIZERS ====================
+
+class UserBasicSerializer(serializers.ModelSerializer):
+    """Basic user info for follow lists."""
+    name = serializers.SerializerMethodField()
+    profile_picture = serializers.SerializerMethodField()
+    user_profile_type = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CustomUser
+        fields = ['id', 'email', 'user_type', 'name', 'profile_picture', 'user_profile_type']
+    
+    def get_name(self, obj):
+        if obj.user_type == 'author' and hasattr(obj, 'author_profile'):
+            return obj.author_profile.full_name
+        elif obj.user_type == 'institution' and hasattr(obj, 'institution_profile'):
+            return obj.institution_profile.institution_name
+        return obj.email
+    
+    def get_profile_picture(self, obj):
+        request = self.context.get('request')
+        if obj.user_type == 'author' and hasattr(obj, 'author_profile'):
+            if obj.author_profile.profile_picture:
+                if request:
+                    return request.build_absolute_uri(obj.author_profile.profile_picture.url)
+                return obj.author_profile.profile_picture.url
+        elif obj.user_type == 'institution' and hasattr(obj, 'institution_profile'):
+            if obj.institution_profile.logo:
+                if request:
+                    return request.build_absolute_uri(obj.institution_profile.logo.url)
+                return obj.institution_profile.logo.url
+        return None
+    
+    def get_user_profile_type(self, obj):
+        """Get additional profile info based on user type."""
+        if obj.user_type == 'author' and hasattr(obj, 'author_profile'):
+            return {
+                'institute': obj.author_profile.institute,
+                'designation': obj.author_profile.designation,
+            }
+        elif obj.user_type == 'institution' and hasattr(obj, 'institution_profile'):
+            return {
+                'institution_type': obj.institution_profile.institution_type,
+                'city': obj.institution_profile.city,
+                'country': obj.institution_profile.country,
+            }
+        return None
+
+
+class FollowSerializer(serializers.ModelSerializer):
+    """Detailed follow relationship with user information."""
+    follower_details = UserBasicSerializer(source='follower', read_only=True)
+    following_details = UserBasicSerializer(source='following', read_only=True)
+    
+    class Meta:
+        model = Follow
+        fields = ['id', 'follower', 'following', 'follower_details', 'following_details', 'created_at']
+        read_only_fields = ['id', 'follower', 'created_at']
+
+
+class FollowCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a follow relationship."""
+    
+    class Meta:
+        model = Follow
+        fields = ['following']
+    
+    def validate(self, attrs):
+        follower = self.context['request'].user
+        following = attrs.get('following')
+        
+        # Prevent self-follow
+        if follower == following:
+            raise serializers.ValidationError({"following": "You cannot follow yourself."})
+        
+        # Check if already following
+        if Follow.objects.filter(follower=follower, following=following).exists():
+            raise serializers.ValidationError({"following": "You are already following this user."})
+        
+        return attrs
+    
+    def create(self, validated_data):
+        validated_data['follower'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class FollowerListSerializer(serializers.ModelSerializer):
+    """List of followers with user details."""
+    user = UserBasicSerializer(source='follower', read_only=True)
+    
+    class Meta:
+        model = Follow
+        fields = ['id', 'user', 'created_at']
+
+
+class FollowingListSerializer(serializers.ModelSerializer):
+    """List of users being followed with user details."""
+    user = UserBasicSerializer(source='following', read_only=True)
+    
+    class Meta:
+        model = Follow
+        fields = ['id', 'user', 'created_at']
+
+
+class FollowStatsSerializer(serializers.Serializer):
+    """Statistics about follows."""
+    followers_count = serializers.IntegerField()
+    following_count = serializers.IntegerField()
+    is_following = serializers.BooleanField(required=False)

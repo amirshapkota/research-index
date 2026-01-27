@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats, AdminStats
+from .models import CustomUser, Author, Institution, AuthorStats, InstitutionStats, AdminStats, Follow
 
 
 class CustomUserAdmin(UserAdmin):
@@ -166,9 +166,34 @@ class AdminStatsAdmin(admin.ModelAdmin):
     recalculate_stats.short_description = 'Recalculate system statistics'
 
 
+class FollowAdmin(admin.ModelAdmin):
+    list_display = ['follower_email', 'follower_type', 'following_email', 'following_type', 'created_at']
+    search_fields = ['follower__email', 'following__email']
+    list_filter = ['follower__user_type', 'following__user_type', 'created_at']
+    readonly_fields = ['created_at']
+    raw_id_fields = ['follower', 'following']
+    
+    def follower_email(self, obj):
+        return obj.follower.email
+    follower_email.short_description = 'Follower'
+    
+    def follower_type(self, obj):
+        return obj.follower.user_type
+    follower_type.short_description = 'Follower Type'
+    
+    def following_email(self, obj):
+        return obj.following.email
+    following_email.short_description = 'Following'
+    
+    def following_type(self, obj):
+        return obj.following.user_type
+    following_type.short_description = 'Following Type'
+
+
 admin.site.register(CustomUser, CustomUserAdmin)
 admin.site.register(Author, AuthorAdmin)
 admin.site.register(Institution, InstitutionAdmin)
 admin.site.register(AuthorStats, AuthorStatsAdmin)
 admin.site.register(InstitutionStats, InstitutionStatsAdmin)
 admin.site.register(AdminStats, AdminStatsAdmin)
+admin.site.register(Follow, FollowAdmin)

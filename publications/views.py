@@ -2067,6 +2067,140 @@ class PublicJournalDetailView(generics.RetrieveAPIView):
         return super().get(request, *args, **kwargs)
 
 
+class PublicJournalIssuesView(generics.ListAPIView):
+    """
+    List all issues for a specific journal (public access).
+    No authentication required.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = IssueListSerializer
+    
+    def get_queryset(self):
+        journal_pk = self.kwargs.get('journal_pk')
+        # Only return issues for active journals, ordered by publication date (newest first)
+        return Issue.objects.filter(
+            journal_id=journal_pk,
+            journal__is_active=True
+        ).select_related('journal').prefetch_related('articles').order_by(
+            '-volume', '-issue_number', '-publication_date'
+        )
+    
+    @extend_schema(
+        tags=['Public Journals'],
+        summary='List Journal Issues (Public)',
+        description='Retrieve all issues for a specific journal. No authentication required. Returns issues ordered by volume and issue number (newest first).',
+        parameters=[
+            OpenApiParameter(
+                name='journal_pk',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='Journal ID',
+                required=True,
+            ),
+            OpenApiParameter(
+                name='year',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by publication year',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='volume',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by volume number',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='status',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by status (draft, published, archived)',
+                required=False,
+            ),
+        ],
+        responses={
+            200: IssueListSerializer(many=True),
+            404: OpenApiResponse(description='Journal not found or not active'),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        # Check if journal exists and is active
+        journal_pk = self.kwargs.get('journal_pk')
+        if not Journal.objects.filter(pk=journal_pk, is_active=True).exists():
+            return Response({
+                'error': 'Journal not found or not active'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Apply filters
+        queryset = self.get_queryset()
+        
+        # Filter by year
+        year = request.query_params.get('year', None)
+        if year:
+            queryset = queryset.filter(publication_date__year=year)
+        
+        # Filter by volume
+        volume = request.query_params.get('volume', None)
+        if volume:
+            queryset = queryset.filter(volume=volume)
+        
+        # Filter by status
+        status_filter = request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        # Serialize and return
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class PublicJournalIssueDetailView(generics.RetrieveAPIView):
+    """
+    Retrieve a single issue with all its articles (public access).
+    No authentication required.
+    """
+    permission_classes = [AllowAny]
+    serializer_class = IssueDetailSerializer
+    lookup_field = 'pk'
+    
+    def get_queryset(self):
+        journal_pk = self.kwargs.get('journal_pk')
+        # Only return issues for active journals
+        return Issue.objects.filter(
+            journal_id=journal_pk,
+            journal__is_active=True
+        ).select_related('journal').prefetch_related('articles', 'articles__publication')
+    
+    @extend_schema(
+        tags=['Public Journals'],
+        summary='Get Issue Details (Public)',
+        description='Retrieve complete information about a single journal issue including all articles. No authentication required.',
+        parameters=[
+            OpenApiParameter(
+                name='journal_pk',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='Journal ID',
+                required=True,
+            ),
+            OpenApiParameter(
+                name='pk',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='Issue ID',
+                required=True,
+            ),
+        ],
+        responses={
+            200: IssueDetailSerializer,
+            404: OpenApiResponse(description='Issue not found or journal not active'),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
 # ==================== PUBLIC INSTITUTION VIEWS ====================
 
 class PublicInstitutionsListView(generics.ListAPIView):

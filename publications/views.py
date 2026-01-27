@@ -2358,10 +2358,18 @@ class PublicInstitutionPublicationsView(generics.ListAPIView):
     def get_queryset(self):
         institution_id = self.kwargs.get('institution_pk')
         
-        # Get all authors from this institution
+        # Get institution details
+        from users.models import Institution
+        try:
+            institution = Institution.objects.get(id=institution_id)
+            institution_name = institution.institution_name
+        except Institution.DoesNotExist:
+            return Publication.objects.none()
+        
+        # Get all authors from this institution (match by institution name in institute field)
         from users.models import Author
         author_ids = Author.objects.filter(
-            institution_id=institution_id
+            institute__icontains=institution_name
         ).values_list('id', flat=True)
         
         queryset = Publication.objects.filter(

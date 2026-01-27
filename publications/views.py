@@ -1131,6 +1131,46 @@ class JournalStatsView(APIView):
             return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
+class RefreshJournalStatsView(APIView):
+    """
+    Manually refresh/update journal statistics.
+    
+    Recalculates h-index, impact factor, cite score, total citations, reads,
+    and other metrics based on current publications data.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Refresh Journal Statistics',
+        description='Manually trigger a recalculation of all journal statistics including h-index, impact factor, cite score, total citations, reads, and recommendations. This aggregates data from all published articles in the journal.',
+        responses={
+            200: OpenApiResponse(
+                description='Statistics updated successfully',
+                response=JournalStatsSerializer,
+            ),
+            404: OpenApiResponse(description='Journal not found'),
+            403: OpenApiResponse(description='Only journal owner can refresh stats'),
+        }
+    )
+    def post(self, request, pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            journal = get_object_or_404(Journal, pk=pk, institution=institution)
+            stats, created = JournalStats.objects.get_or_create(journal=journal)
+            stats.update_stats()
+            
+            serializer = JournalStatsSerializer(stats)
+            return Response({
+                'message': 'Statistics updated successfully',
+                'stats': serializer.data
+            }, status=status.HTTP_200_OK)
+        except Institution.DoesNotExist:
+            return Response({
+                'error': 'Institution profile not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
 class EditorialBoardListCreateView(APIView):
     """
     List or add editorial board members for a journal.

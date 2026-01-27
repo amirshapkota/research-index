@@ -526,6 +526,123 @@ class JournalStats(models.Model):
     
     def __str__(self):
         return f"Stats for {self.journal.title}"
+    
+    def calculate_h_index(self):
+        """
+        Calculate journal h-index: A journal has h-index h if h of its articles
+        have at least h citations each.
+        """
+        # Get all publications in this journal with their citation counts
+        publications = Publication.objects.filter(
+            journal=self.journal,
+            is_published=True
+        ).select_related('stats')
+        
+        citation_counts = []
+        for pub in publications:
+            if hasattr(pub, 'stats'):
+                citation_counts.append(pub.stats.citations_count)
+            else:
+                citation_counts.append(0)
+        
+        # Sort in descending order
+        citation_counts.sort(reverse=True)
+        
+        # Calculate h-index
+        h = 0
+        for i, citations in enumerate(citation_counts, start=1):
+            if citations >= i:
+                h = i
+            else:
+                break
+        
+        return h
+    
+    def calculate_impact_factor(self, year=None):
+        """
+        Calculate a simplified impact factor:
+        Average citations per article published in the last 2 years.
+        
+        Note: This is a simplified calculation. Real impact factor requires
+        citations from the current year to articles published in previous 2 years.
+        """
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        if year is None:
+            current_year = timezone.now().year
+        else:
+            current_year = year
+        
+        # Get publications from the last 2 years
+        two_years_ago = timezone.datetime(current_year - 2, 1, 1)
+        publications = Publication.objects.filter(
+            journal=self.journal,
+            is_published=True,
+            published_date__gte=two_years_ago
+        ).select_related('stats')
+        
+        if not publications.exists():
+            return 0.000
+        
+        total_citations = sum(
+            pub.stats.citations_count if hasattr(pub, 'stats') else 0
+            for pub in publications
+        )
+        
+        articles_count = publications.count()
+        if articles_count == 0:
+            return 0.000
+        
+        return round(total_citations / articles_count, 3)
+    
+    def update_stats(self):
+        """
+        Recalculate all statistics from publications and issues.
+        """
+        # Get all published articles in this journal
+        publications = Publication.objects.filter(
+            journal=self.journal,
+            is_published=True
+        ).select_related('stats')
+        
+        total_citations = 0
+        total_reads = 0
+        total_downloads = 0
+        total_recommendations = 0
+        total_articles = publications.count()
+        
+        for pub in publications:
+            if hasattr(pub, 'stats'):
+                stats = pub.stats
+                total_citations += stats.citations_count
+                total_reads += stats.reads_count
+                total_downloads += stats.downloads_count
+                total_recommendations += stats.recommendations_count
+        
+        # Count issues
+        total_issues = self.journal.issues.count()
+        
+        # Update fields
+        self.total_articles = total_articles
+        self.total_issues = total_issues
+        self.total_citations = total_citations
+        self.total_reads = total_reads
+        self.recommendations = total_recommendations
+        
+        # Calculate h-index
+        self.h_index = self.calculate_h_index()
+        
+        # Calculate impact factor
+        self.impact_factor = self.calculate_impact_factor()
+        
+        # Calculate average citations (as cite score approximation)
+        if total_articles > 0:
+            self.cite_score = round(total_citations / total_articles, 3)
+        else:
+            self.cite_score = 0.000
+        
+        self.save()
 
 
 class Issue(models.Model):

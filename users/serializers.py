@@ -117,6 +117,7 @@ class CoAuthorSerializer(serializers.Serializer):
 
 class InstitutionStatsSerializer(serializers.ModelSerializer):
     """Serializer for institution statistics"""
+    compared_summary = serializers.SerializerMethodField()
     
     class Meta:
         model = InstitutionStats
@@ -129,8 +130,58 @@ class InstitutionStatsSerializer(serializers.ModelSerializer):
             'recommendations_count',
             'total_authors',
             'last_updated',
+            'compared_summary',
         ]
         read_only_fields = fields
+    
+    def get_compared_summary(self, obj):
+        """
+        Generate comparison summary text based on institution's percentile rank.
+        Compares total_citations against all institutions.
+        """
+        from django.db.models import Count
+        
+        # Get total number of institutions with stats
+        total_institutions = InstitutionStats.objects.count()
+        
+        if total_institutions <= 1:
+            return f"{obj.institution.institution_name}'s research contribution reflects consistent dedication, impactful publications, and an influential role in advancing research and education in Nepal."
+        
+        # Count institutions with lower total_citations
+        institutions_below = InstitutionStats.objects.filter(
+            total_citations__lt=obj.total_citations
+        ).count()
+        
+        # Calculate percentile (what percentage of institutions this institution is better than)
+        percentile = round((institutions_below / (total_institutions - 1)) * 100)
+        
+        # Determine if higher or lower
+        if percentile >= 50:
+            comparison = "higher"
+            # For institutions in top 50%, compare to those below
+            comparison_percentile = percentile
+        else:
+            comparison = "lower"
+            # For institutions in bottom 50%, compare to those above
+            comparison_percentile = 100 - percentile
+        
+        # Generate dynamic text based on percentile
+        if percentile >= 90:
+            descriptor = "exceptional dedication, highly impactful publications, and a leading role"
+        elif percentile >= 75:
+            descriptor = "outstanding dedication, impactful publications, and an influential role"
+        elif percentile >= 50:
+            descriptor = "consistent dedication, impactful publications, and an influential role"
+        elif percentile >= 25:
+            descriptor = "ongoing dedication, meaningful publications, and a contributing role"
+        else:
+            descriptor = "growing dedication, emerging publications, and a developing role"
+        
+        return (
+            f"{obj.institution.institution_name}'s research contribution is {comparison} than "
+            f"{comparison_percentile}% of Nepal Research Index members, reflecting {descriptor} "
+            f"in advancing research and education in Nepal."
+        )
 
 
 class AdminStatsSerializer(serializers.ModelSerializer):

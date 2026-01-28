@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt.token_blacklist',  # JWT token blacklist
     'drf_spectacular',
+    'django_apscheduler',  # Scheduled tasks
     'users',
     'common',
     'publications',
@@ -257,6 +258,14 @@ EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@researchindex.com')
 CONTACT_EMAIL = config('CONTACT_EMAIL', default='admin@researchindex.com')
+
+# External Journal API Configuration
+EXTERNAL_JOURNAL_API_URL = config('EXTERNAL_JOURNAL_API_URL', default='http://localhost:8001')
+
+# Publication Sync Settings
+PUBLICATION_SYNC_ENABLED = config('PUBLICATION_SYNC_ENABLED', default=True, cast=bool)
+PUBLICATION_SYNC_SCHEDULE_HOUR = config('PUBLICATION_SYNC_SCHEDULE_HOUR', default=2, cast=int)  # Run at 2 AM daily
+PUBLICATION_SYNC_SCHEDULE_MINUTE = config('PUBLICATION_SYNC_SCHEDULE_MINUTE', default=0, cast=int)
 
 
 

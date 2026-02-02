@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import (
+from .views.views import (
     PublicationListCreateView,
     PublicationDetailView,
     PublicationStatsView,
@@ -45,7 +45,7 @@ from .views import (
     PublicAuthorPublicationsView,
     PublicInstitutionPublicationsView,
 )
-from .views_sync import sync_external_publications
+from .views.sync.views import sync_external_publications
 
 urlpatterns = [
     # ==================== PUBLIC ENDPOINTS ====================

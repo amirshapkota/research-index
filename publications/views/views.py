@@ -7,13 +7,13 @@ from django.db.models import Q
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 
-from .models import (
+from ..models import (
     Publication, MeSHTerm, PublicationStats, 
     Citation, Reference, LinkOut, PublicationRead,
     Journal, EditorialBoardMember, JournalStats, Issue, IssueArticle,
     Topic, TopicBranch, JournalQuestionnaire
 )
-from .serializers import (
+from ..serializers import (
     PublicationListSerializer, PublicationDetailSerializer,
     PublicationCreateUpdateSerializer, AddCitationSerializer,
     AddReferenceSerializer, BulkReferencesSerializer,

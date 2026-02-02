@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
-from .services import ExternalJournalAPI, ExternalDataMapper
+from ...services import ExternalJournalAPI, ExternalDataMapper
 import logging
 
 logger = logging.getLogger(__name__)

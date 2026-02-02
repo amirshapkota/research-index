@@ -44,6 +44,7 @@ from .views import (
     PublicAuthorPublicationsView,
     PublicInstitutionPublicationsView,
 )
+from .views_sync import sync_external_publications
 
 urlpatterns = [
     # ==================== PUBLIC ENDPOINTS ====================
@@ -131,4 +132,8 @@ urlpatterns = [
     
     # Retrieve/Update/Delete a specific questionnaire
     path('questionnaires/<int:pk>/', JournalQuestionnaireDetailView.as_view(), name='questionnaire-detail'),
+    
+    # ==================== ADMIN ENDPOINTS ====================
+    # Sync from external journal portal
+    path('sync/', sync_external_publications, name='sync-external-publications'),
 ]

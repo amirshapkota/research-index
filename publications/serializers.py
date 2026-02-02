@@ -403,6 +403,11 @@ class PublicationListSerializer(serializers.ModelSerializer):
     journal_name = serializers.CharField(source='journal.title', read_only=True)
     journal_issn = serializers.CharField(source='journal.issn', read_only=True)
     
+    # Issue information (from IssueArticle linkage)
+    issue_id = serializers.SerializerMethodField()
+    issue_number = serializers.SerializerMethodField()
+    issue_volume = serializers.SerializerMethodField()
+    
     # Topic information
     topic_branch_id = serializers.IntegerField(source='topic_branch.id', read_only=True, allow_null=True)
     topic_branch_name = serializers.CharField(source='topic_branch.name', read_only=True, allow_null=True)
@@ -414,7 +419,8 @@ class PublicationListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'author_name', 'author_orcid', 'publication_type',
             'publication_type_display', 'doi', 'published_date', 'journal_id',
-            'journal_name', 'journal_issn', 'abstract', 'pdf_url', 'is_published',
+            'journal_name', 'journal_issn', 'issue_id', 'issue_number', 'issue_volume',
+            'abstract', 'pdf_url', 'is_published',
             'created_at', 'updated_at', 'stats', 'mesh_terms_count',
             'citations_count', 'references_count',
             'topic_branch_id', 'topic_branch_name', 'topic_id', 'topic_name'
@@ -437,6 +443,21 @@ class PublicationListSerializer(serializers.ModelSerializer):
     
     def get_references_count(self, obj):
         return obj.references.count()
+    
+    def get_issue_id(self, obj):
+        """Get the issue ID if this publication is linked to an issue."""
+        issue_article = obj.issue_appearances.first()
+        return issue_article.issue.id if issue_article else None
+    
+    def get_issue_number(self, obj):
+        """Get the issue number if this publication is linked to an issue."""
+        issue_article = obj.issue_appearances.first()
+        return issue_article.issue.issue_number if issue_article else None
+    
+    def get_issue_volume(self, obj):
+        """Get the volume number if this publication is linked to an issue."""
+        issue_article = obj.issue_appearances.first()
+        return issue_article.issue.volume if issue_article else None
 
 
 class PublicationDetailSerializer(serializers.ModelSerializer):
@@ -511,6 +532,13 @@ class PublicationCreateUpdateSerializer(serializers.ModelSerializer):
         help_text="List of link outs: [{'link_type': 'type', 'url': 'url', 'description': 'desc'}]"
     )
     
+    issue_id = serializers.IntegerField(
+        write_only=True,
+        required=False,
+        allow_null=True,
+        help_text="Issue ID to link this publication to"
+    )
+    
     class Meta:
         model = Publication
         fields = [
@@ -519,13 +547,14 @@ class PublicationCreateUpdateSerializer(serializers.ModelSerializer):
             'pages', 'publisher', 'co_authors', 'erratum_from',
             'pubmed_id', 'arxiv_id', 'pubmed_central_id', 'is_published',
             'topic_branch',
-            'mesh_terms_data', 'link_outs_data'
+            'mesh_terms_data', 'link_outs_data', 'issue_id'
         ]
     
     def create(self, validated_data):
         # Extract nested data
         mesh_terms_data = validated_data.pop('mesh_terms_data', [])
         link_outs_data = validated_data.pop('link_outs_data', [])
+        issue_id = validated_data.pop('issue_id', None)
         
         # Get author from request context
         request = self.context.get('request')
@@ -545,12 +574,28 @@ class PublicationCreateUpdateSerializer(serializers.ModelSerializer):
         for link_data in link_outs_data:
             LinkOut.objects.create(publication=publication, **link_data)
         
+        # Link to issue if provided
+        if issue_id:
+            from publications.models import Issue, IssueArticle
+            try:
+                issue = Issue.objects.get(pk=issue_id)
+                # Get the max order for this issue
+                max_order = IssueArticle.objects.filter(issue=issue).count()
+                IssueArticle.objects.create(
+                    issue=issue,
+                    publication=publication,
+                    order=max_order + 1
+                )
+            except Issue.DoesNotExist:
+                pass  # Silently ignore if issue doesn't exist
+        
         return publication
     
     def update(self, instance, validated_data):
         # Extract nested data
         mesh_terms_data = validated_data.pop('mesh_terms_data', None)
         link_outs_data = validated_data.pop('link_outs_data', None)
+        issue_id = validated_data.pop('issue_id', None)
         
         # Update publication fields
         for attr, value in validated_data.items():
@@ -568,6 +613,26 @@ class PublicationCreateUpdateSerializer(serializers.ModelSerializer):
             instance.link_outs.all().delete()
             for link_data in link_outs_data:
                 LinkOut.objects.create(publication=instance, **link_data)
+        
+        # Update issue linkage if provided
+        if issue_id is not None:
+            from publications.models import Issue, IssueArticle
+            # Remove existing issue linkages
+            instance.issue_appearances.all().delete()
+            
+            # Add new linkage if issue_id is provided
+            if issue_id:
+                try:
+                    issue = Issue.objects.get(pk=issue_id)
+                    # Get the max order for this issue
+                    max_order = IssueArticle.objects.filter(issue=issue).count()
+                    IssueArticle.objects.create(
+                        issue=issue,
+                        publication=instance,
+                        order=max_order + 1
+                    )
+                except Issue.DoesNotExist:
+                    pass  # Silently ignore if issue doesn't exist
         
         return instance
 

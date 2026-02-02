@@ -811,6 +811,70 @@ class IssueArticleSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
+class IssueArticleDetailSerializer(serializers.ModelSerializer):
+    """
+    Detailed serializer for articles in an issue with full publication info.
+    """
+    publication_id = serializers.IntegerField(source='publication.id', read_only=True)
+    title = serializers.CharField(source='publication.title', read_only=True)
+    authors = serializers.SerializerMethodField()
+    abstract = serializers.CharField(source='publication.abstract', read_only=True)
+    doi = serializers.CharField(source='publication.doi', read_only=True)
+    pages = serializers.CharField(source='publication.pages', read_only=True)
+    published_date = serializers.DateField(source='publication.published_date', read_only=True)
+    pdf_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = IssueArticle
+        fields = [
+            'id', 'publication_id', 'title', 'authors', 'abstract', 
+            'doi', 'pages', 'published_date', 'pdf_url', 'order', 'section'
+        ]
+        read_only_fields = ['id']
+    
+    def get_authors(self, obj):
+        """Get main author and co-authors."""
+        main_author = obj.publication.author.full_name
+        co_authors = obj.publication.co_authors
+        
+        if co_authors:
+            return f"{main_author}, {co_authors}"
+        return main_author
+    
+    def get_pdf_url(self, obj):
+        """Get PDF URL if available."""
+        if obj.publication.pdf_file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.publication.pdf_file.url)
+            return obj.publication.pdf_file.url
+        return None
+
+
+class IssueWithArticlesSerializer(serializers.ModelSerializer):
+    """
+    Issue serializer with nested articles for volume grouping.
+    """
+    articles = IssueArticleDetailSerializer(many=True, read_only=True)
+    cover_image_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Issue
+        fields = [
+            'id', 'volume', 'issue_number', 'title', 'description',
+            'cover_image_url', 'publication_date', 'is_special_issue',
+            'articles'
+        ]
+    
+    def get_cover_image_url(self, obj):
+        if obj.cover_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.cover_image.url)
+            return obj.cover_image.url
+        return None
+
+
 class IssueListSerializer(serializers.ModelSerializer):
     """
     Simplified serializer for listing issues.

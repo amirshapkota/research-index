@@ -2201,6 +2201,113 @@ class PublicJournalIssueDetailView(generics.RetrieveAPIView):
         return super().get(request, *args, **kwargs)
 
 
+class PublicJournalVolumesView(APIView):
+    """
+    Get all volumes with issues and articles for a journal (public access).
+    Returns data grouped by volume with nested issues and articles.
+    """
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        tags=['Public Journals'],
+        summary='Get Journal Volumes with Issues and Articles (Public)',
+        description='Retrieve all volumes for a journal, grouped with their issues and articles. No authentication required.',
+        parameters=[
+            OpenApiParameter(
+                name='journal_pk',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='Journal ID',
+                required=True,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='Volumes with issues and articles',
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'journal_id': {'type': 'integer'},
+                        'journal_title': {'type': 'string'},
+                        'volumes': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'volume': {'type': 'integer'},
+                                    'year': {'type': 'integer'},
+                                    'issues_count': {'type': 'integer'},
+                                    'articles_count': {'type': 'integer'},
+                                    'issues': {'type': 'array'}
+                                }
+                            }
+                        }
+                    }
+                }
+            ),
+            404: OpenApiResponse(description='Journal not found or not active'),
+        }
+    )
+    def get(self, request, journal_pk):
+        from collections import defaultdict
+        from publications.serializers import IssueWithArticlesSerializer
+        
+        # Check if journal exists and is active
+        journal = get_object_or_404(Journal, pk=journal_pk, is_active=True)
+        
+        # Get all issues for this journal with articles
+        issues = Issue.objects.filter(
+            journal=journal,
+            status='published'
+        ).select_related('journal').prefetch_related(
+            'articles',
+            'articles__publication',
+            'articles__publication__author'
+        ).order_by('-volume', '-issue_number')
+        
+        # Group issues by volume
+        volumes_dict = defaultdict(list)
+        for issue in issues:
+            volumes_dict[issue.volume].append(issue)
+        
+        # Build response data
+        volumes_data = []
+        for volume_num in sorted(volumes_dict.keys(), reverse=True):
+            volume_issues = volumes_dict[volume_num]
+            
+            # Get year from first issue's publication date
+            year = None
+            if volume_issues and volume_issues[0].publication_date:
+                year = volume_issues[0].publication_date.year
+            
+            # Count total articles in this volume
+            total_articles = sum(issue.articles.count() for issue in volume_issues)
+            
+            # Serialize issues
+            serializer = IssueWithArticlesSerializer(
+                volume_issues, 
+                many=True, 
+                context={'request': request}
+            )
+            
+            volumes_data.append({
+                'volume': volume_num,
+                'year': year,
+                'issues_count': len(volume_issues),
+                'articles_count': total_articles,
+                'issues': serializer.data
+            })
+        
+        response_data = {
+            'journal_id': journal.id,
+            'journal_title': journal.title,
+            'total_volumes': len(volumes_data),
+            'volumes': volumes_data
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
 # ==================== PUBLIC INSTITUTION VIEWS ====================
 
 class PublicInstitutionsListView(generics.ListAPIView):

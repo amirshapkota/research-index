@@ -404,9 +404,12 @@ class CookieTokenRefreshView(TokenRefreshView):
             refresh_token = request.data.get('refresh')
         
         if not refresh_token:
-            return Response({
+            response = Response({
                 'error': 'Refresh token not provided'
             }, status=status.HTTP_401_UNAUTHORIZED)
+            # Clear cookies on missing token
+            clear_auth_cookies(response)
+            return response
         
         # Add refresh token to request data for parent class
         # Handle both QueryDict (with _mutable) and regular dict
@@ -421,22 +424,38 @@ class CookieTokenRefreshView(TokenRefreshView):
             data['refresh'] = refresh_token
             request._full_data = data
         
-        # Call parent's post method to handle token refresh
-        response = super().post(request, *args, **kwargs)
-        
-        if response.status_code == 200:
-            # Get the new access token from response
-            access_token = response.data.get('access')
+        try:
+            # Call parent's post method to handle token refresh
+            response = super().post(request, *args, **kwargs)
             
-            if access_token:
-                # Set both access and refresh token cookies to keep them in sync
-                # Use the same helper function as login for consistency
-                set_auth_cookies(response, access_token, refresh_token)
+            if response.status_code == 200:
+                # Get the new access token from response
+                access_token = response.data.get('access')
+                
+                if access_token:
+                    # Set both access and refresh token cookies to keep them in sync
+                    # Use the same helper function as login for consistency
+                    set_auth_cookies(response, access_token, refresh_token)
+                
+                # Update response message
+                response.data['message'] = 'Token refreshed successfully'
+            else:
+                # Token refresh failed - clear cookies
+                clear_auth_cookies(response)
             
-            # Update response message
-            response.data['message'] = 'Token refreshed successfully'
-        
-        return response
+            return response
+            
+        except (TokenError, Exception) as e:
+            # Token refresh failed - clear cookies and return 401
+            response = Response({
+                'error': 'Invalid or expired refresh token',
+                'detail': str(e) if settings.DEBUG else 'Token refresh failed'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            # Clear authentication cookies on refresh failure
+            clear_auth_cookies(response)
+            
+            return response
 
 
 class MeView(APIView):

@@ -1,7 +1,6 @@
 from django.contrib import admin
 from .models import (
-    SupportPage, PricingTier, SupportBenefit, WhySupportPoint,
-    Sponsor, SponsorshipPartnershipContent, SponsorshipPoint, PartnershipPoint
+    SupportPage, PricingTier, SupportBenefit, WhySupportPoint, Sponsor
 )
 
 
@@ -23,18 +22,6 @@ class WhySupportPointInline(admin.TabularInline):
     fields = ['title', 'description', 'order']
 
 
-class SponsorshipPointInline(admin.TabularInline):
-    model = SponsorshipPoint
-    extra = 1
-    fields = ['text', 'order']
-
-
-class PartnershipPointInline(admin.TabularInline):
-    model = PartnershipPoint
-    extra = 1
-    fields = ['text', 'order']
-
-
 @admin.register(SupportPage)
 class SupportPageAdmin(admin.ModelAdmin):
     list_display = ['page_type', 'title', 'is_active', 'updated_at']
@@ -46,6 +33,10 @@ class SupportPageAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Basic Information', {
             'fields': ('page_type', 'title', 'overview')
+        }),
+        ('Sponsorship & Partnership Details', {
+            'fields': ('sponsorship_detail', 'partnership_detail'),
+            'description': 'Only applicable for Sponsorship & Partnership page type'
         }),
         ('Status', {
             'fields': ('is_active',)
@@ -83,15 +74,4 @@ class SponsorAdmin(admin.ModelAdmin):
         }),
     )
 
-
-@admin.register(SponsorshipPartnershipContent)
-class SponsorshipPartnershipContentAdmin(admin.ModelAdmin):
-    list_display = ['support_page']
-    inlines = [SponsorshipPointInline, PartnershipPointInline]
-    
-    fieldsets = (
-        ('Content', {
-            'fields': ('support_page', 'sponsorship_intro', 'partnership_intro', 'join_cta')
-        }),
-    )
 

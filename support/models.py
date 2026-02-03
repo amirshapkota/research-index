@@ -25,6 +25,16 @@ class SupportPage(models.Model):
         validators=[MinLengthValidator(10)]
     )
     
+    # Sponsorship & Partnership fields (only for sponsorship_partnership page_type)
+    sponsorship_detail = models.TextField(
+        blank=True,
+        help_text="Sponsorship details and benefits (rich text/HTML)"
+    )
+    partnership_detail = models.TextField(
+        blank=True,
+        help_text="Partnership details and benefits (rich text/HTML)"
+    )
+    
     # Metadata
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -184,70 +194,5 @@ class Sponsor(models.Model):
         return self.name
 
 
-class SponsorshipPartnershipContent(models.Model):
-    """Additional content specific to Sponsorship & Partnership page"""
-    support_page = models.OneToOneField(
-        SupportPage,
-        on_delete=models.CASCADE,
-        related_name='sponsorship_content',
-        limit_choices_to={'page_type': SupportPageType.SPONSORSHIP_PARTNERSHIP}
-    )
-    sponsorship_intro = models.TextField(
-        help_text="Sponsorship model introduction (rich text JSON)"
-    )
-    partnership_intro = models.TextField(
-        help_text="Partnership model introduction (rich text JSON)"
-    )
-    join_cta = models.TextField(
-        help_text="Join as sponsor/partner call-to-action (rich text JSON)"
-    )
 
-    class Meta:
-        verbose_name = "Sponsorship/Partnership Content"
-        verbose_name_plural = "Sponsorship/Partnership Content"
-
-    def __str__(self):
-        return f"Additional content for {self.support_page}"
-
-
-class SponsorshipPoint(models.Model):
-    """Sponsorship model points"""
-    content = models.ForeignKey(
-        SponsorshipPartnershipContent,
-        on_delete=models.CASCADE,
-        related_name='sponsorship_points'
-    )
-    text = models.TextField(
-        help_text="Sponsorship point text"
-    )
-    order = models.IntegerField(default=0)
-
-    class Meta:
-        verbose_name = "Sponsorship Point"
-        verbose_name_plural = "Sponsorship Points"
-        ordering = ['order']
-
-    def __str__(self):
-        return self.text[:50]
-
-
-class PartnershipPoint(models.Model):
-    """Partnership model points"""
-    content = models.ForeignKey(
-        SponsorshipPartnershipContent,
-        on_delete=models.CASCADE,
-        related_name='partnership_points'
-    )
-    text = models.TextField(
-        help_text="Partnership point text"
-    )
-    order = models.IntegerField(default=0)
-
-    class Meta:
-        verbose_name = "Partnership Point"
-        verbose_name_plural = "Partnership Points"
-        ordering = ['order']
-
-    def __str__(self):
-        return self.text[:50]
 

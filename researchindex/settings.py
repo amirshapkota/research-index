@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'users',
     'common',
     'publications',
+    'support',
 ]
 
 MIDDLEWARE = [

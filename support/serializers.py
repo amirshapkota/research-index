@@ -8,19 +8,31 @@ from .models import (
 class PricingTierSerializer(serializers.ModelSerializer):
     class Meta:
         model = PricingTier
-        fields = ['id', 'category', 'npr_amount', 'usd_amount', 'purpose', 'order']
+        fields = ['id', 'support_page', 'category', 'npr_amount', 'usd_amount', 'purpose', 'order']
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'support_page': {'required': False}  # Will be set by the view
+        }
 
 
 class SupportBenefitSerializer(serializers.ModelSerializer):
     class Meta:
         model = SupportBenefit
-        fields = ['id', 'title', 'description', 'order']
+        fields = ['id', 'support_page', 'title', 'description', 'order']
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'support_page': {'required': False}
+        }
 
 
 class WhySupportPointSerializer(serializers.ModelSerializer):
     class Meta:
         model = WhySupportPoint
-        fields = ['id', 'title', 'description', 'order']
+        fields = ['id', 'support_page', 'title', 'description', 'order']
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'support_page': {'required': False}
+        }
 
 
 class SponsorSerializer(serializers.ModelSerializer):

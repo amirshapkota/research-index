@@ -139,7 +139,7 @@ class CrossrefWorkByDOIView(APIView):
             OpenApiParameter(
                 name='doi',
                 type=OpenApiTypes.STR,
-                location=OpenApiParameter.QUERY,
+                location=OpenApiParameter.PATH,
                 description='Digital Object Identifier (e.g., 10.1037/0003-066X.59.1.29)',
                 required=True,
             ),
@@ -150,17 +150,7 @@ class CrossrefWorkByDOIView(APIView):
             500: OpenApiResponse(description='Crossref API error'),
         }
     )
-    def get(self, request, doi=None):
-        # Accept DOI from either query parameter or path parameter
-        if not doi:
-            doi = request.query_params.get('doi')
-        
-        if not doi:
-            return Response({
-                'status': 'error',
-                'message': 'DOI parameter is required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
+    def get(self, request, doi):
         # URL-decode the DOI (handles encoded slashes like %2F)
         doi = unquote(doi)
         service = CrossrefService()
@@ -284,7 +274,7 @@ class CrossrefWorkReferencesView(APIView):
             OpenApiParameter(
                 name='doi',
                 type=OpenApiTypes.STR,
-                location=OpenApiParameter.QUERY,
+                location=OpenApiParameter.PATH,
                 description='Digital Object Identifier',
                 required=True,
             ),
@@ -294,17 +284,7 @@ class CrossrefWorkReferencesView(APIView):
             404: OpenApiResponse(description='DOI not found'),
         }
     )
-    def get(self, request, doi=None):
-        # Accept DOI from either query parameter or path parameter
-        if not doi:
-            doi = request.query_params.get('doi')
-        
-        if not doi:
-            return Response({
-                'status': 'error',
-                'message': 'DOI parameter is required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
+    def get(self, request, doi):
         # URL-decode the DOI (handles encoded slashes like %2F)
         doi = unquote(doi)
         service = CrossrefService()
@@ -334,7 +314,7 @@ class CrossrefWorkCitationsView(APIView):
             OpenApiParameter(
                 name='doi',
                 type=OpenApiTypes.STR,
-                location=OpenApiParameter.QUERY,
+                location=OpenApiParameter.PATH,
                 description='Digital Object Identifier',
                 required=True,
             ),
@@ -344,17 +324,7 @@ class CrossrefWorkCitationsView(APIView):
             404: OpenApiResponse(description='DOI not found'),
         }
     )
-    def get(self, request, doi=None):
-        # Accept DOI from either query parameter or path parameter
-        if not doi:
-            doi = request.query_params.get('doi')
-        
-        if not doi:
-            return Response({
-                'status': 'error',
-                'message': 'DOI parameter is required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
+    def get(self, request, doi):
         # URL-decode the DOI (handles encoded slashes like %2F)
         doi = unquote(doi)
         service = CrossrefService()

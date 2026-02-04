@@ -336,17 +336,25 @@ class CrossrefService:
         if work.get('container-title'):
             journal_name = work['container-title'][0] if isinstance(work['container-title'], list) else work['container-title']
         
+        # Extract page/article number
+        page = work.get('page', '')
+        if not page and work.get('article-number'):
+            page = work.get('article-number', '')
+        
+        # Extract abstract - Crossref may not always have it
+        abstract = work.get('abstract', '')
+        
         return {
             'doi': work.get('DOI', ''),
             'title': title,
             'authors': authors,
-            'abstract': work.get('abstract', ''),
+            'abstract': abstract,
             'published_date': published_date,
             'journal': journal_name,
             'issn': work.get('ISSN', []),
             'volume': work.get('volume', ''),
             'issue': work.get('issue', ''),
-            'page': work.get('page', ''),
+            'page': page,
             'publisher': work.get('publisher', ''),
             'type': work.get('type', ''),
             'subtype': work.get('subtype', ''),

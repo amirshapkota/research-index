@@ -11,6 +11,7 @@ from .views import (
     CrossrefValidateDOIView,
     CrossrefSearchFundersView,
 )
+from .views_journal_import import ImportJournalFromCrossrefView
 
 urlpatterns = [
     # Contact
@@ -21,6 +22,7 @@ urlpatterns = [
     path('crossref/search/works/', CrossrefSearchWorksView.as_view(), name='crossref-search-works'),
     path('crossref/search/funders/', CrossrefSearchFundersView.as_view(), name='crossref-search-funders'),
     path('crossref/validate-doi/', CrossrefValidateDOIView.as_view(), name='crossref-validate-doi'),
+    path('crossref/import-journal/', ImportJournalFromCrossrefView.as_view(), name='crossref-import-journal'),
     
     # DOI-based endpoints (DOI must be URL-encoded, e.g., 10.1007%2Fs10791-025-09890-x)
     re_path(r'^crossref/works/(?P<doi>.+)/references/$', CrossrefWorkReferencesView.as_view(), name='crossref-work-references'),

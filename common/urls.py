@@ -12,6 +12,13 @@ from .views import (
     CrossrefSearchFundersView,
 )
 from .views_journal_import import ImportJournalFromCrossrefView
+from .views_nepjol import (
+    NepJOLImportStatusView,
+    NepJOLImportStartView,
+    NepJOLImportStopView,
+    NepJOLImportHistoryView,
+    NepJOLAvailableJournalsView,
+)
 
 urlpatterns = [
     # Contact
@@ -32,4 +39,11 @@ urlpatterns = [
     # Journal endpoints
     path('crossref/journal/<str:issn>/', CrossrefJournalByISSNView.as_view(), name='crossref-journal-by-issn'),
     path('crossref/journal/<str:issn>/works/', CrossrefJournalWorksView.as_view(), name='crossref-journal-works'),
+    
+    # NepJOL Import endpoints
+    path('nepjol/import/status/', NepJOLImportStatusView.as_view(), name='nepjol-import-status'),
+    path('nepjol/import/start/', NepJOLImportStartView.as_view(), name='nepjol-import-start'),
+    path('nepjol/import/stop/', NepJOLImportStopView.as_view(), name='nepjol-import-stop'),
+    path('nepjol/import/history/', NepJOLImportHistoryView.as_view(), name='nepjol-import-history'),
+    path('nepjol/journals/', NepJOLAvailableJournalsView.as_view(), name='nepjol-available-journals'),
 ]

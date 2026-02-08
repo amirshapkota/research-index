@@ -393,6 +393,7 @@ class PublicationListSerializer(serializers.ModelSerializer):
     author_orcid = serializers.CharField(source='author.orcid', read_only=True)
     publication_type_display = serializers.CharField(source='get_publication_type_display', read_only=True)
     pdf_url = serializers.SerializerMethodField()
+    pdf_file_name = serializers.SerializerMethodField()
     stats = PublicationStatsSerializer(read_only=True)
     mesh_terms_count = serializers.SerializerMethodField()
     citations_count = serializers.SerializerMethodField()
@@ -401,6 +402,7 @@ class PublicationListSerializer(serializers.ModelSerializer):
     # Journal information
     journal_id = serializers.IntegerField(source='journal.id', read_only=True)
     journal_name = serializers.CharField(source='journal.title', read_only=True)
+    journal_title = serializers.CharField(source='journal.title', read_only=True)  # Alias for consistency
     journal_issn = serializers.CharField(source='journal.issn', read_only=True)
     
     # Issue information (from IssueArticle linkage)
@@ -419,11 +421,13 @@ class PublicationListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'author_name', 'author_orcid', 'publication_type',
             'publication_type_display', 'doi', 'published_date', 'journal_id',
-            'journal_name', 'journal_issn', 'issue_id', 'issue_number', 'issue_volume',
-            'abstract', 'pdf_url', 'is_published',
+            'journal_name', 'journal_title', 'journal_issn', 'issue_id', 'issue_number', 'issue_volume',
+            'abstract', 'pdf_url', 'pdf_file_name', 'is_published',
             'created_at', 'updated_at', 'stats', 'mesh_terms_count',
             'citations_count', 'references_count',
-            'topic_branch_id', 'topic_branch_name', 'topic_id', 'topic_name'
+            'topic_branch_id', 'topic_branch_name', 'topic_id', 'topic_name',
+            'volume', 'issue', 'pages', 'publisher', 'co_authors',
+            'pubmed_id', 'arxiv_id', 'pubmed_central_id', 'erratum_from'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -433,6 +437,13 @@ class PublicationListSerializer(serializers.ModelSerializer):
             if request:
                 return request.build_absolute_uri(obj.pdf_file.url)
             return obj.pdf_file.url
+        return None
+    
+    def get_pdf_file_name(self, obj):
+        """Get the filename of the uploaded PDF"""
+        if obj.pdf_file:
+            import os
+            return os.path.basename(obj.pdf_file.name)
         return None
     
     def get_mesh_terms_count(self, obj):

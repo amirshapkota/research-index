@@ -2,6 +2,7 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 
@@ -23,14 +24,25 @@ class IsAdminUser:
         )
 
 
+class AdminUserPagination(PageNumberPagination):
+    """
+    Custom pagination for admin user list.
+    """
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
 class AdminUserListView(generics.ListAPIView):
     """
     List all users in the system (admin only).
     
     Supports filtering by user_type and search by email/name.
+    Supports pagination with page and page_size query params.
     """
     permission_classes = [IsAuthenticated, IsAdminUser]
     serializer_class = AdminUserListSerializer
+    pagination_class = AdminUserPagination
     
     def get_queryset(self):
         queryset = CustomUser.objects.select_related(

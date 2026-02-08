@@ -780,3 +780,138 @@ class FollowStatsSerializer(serializers.Serializer):
     followers_count = serializers.IntegerField()
     following_count = serializers.IntegerField()
     is_following = serializers.BooleanField(required=False)
+
+
+# ==================== ADMIN USER MANAGEMENT SERIALIZERS ====================
+
+class AdminUserListSerializer(serializers.ModelSerializer):
+    """Serializer for listing all users (admin only)."""
+    profile_name = serializers.SerializerMethodField()
+    profile_info = serializers.SerializerMethodField()
+    publications_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CustomUser
+        fields = [
+            'id', 'email', 'user_type', 'is_active', 'is_staff',
+            'created_at', 'updated_at', 'profile_name', 'profile_info',
+            'publications_count'
+        ]
+        read_only_fields = fields
+    
+    def get_profile_name(self, obj):
+        """Get the profile name based on user type."""
+        if obj.user_type == 'author' and hasattr(obj, 'author_profile'):
+            return obj.author_profile.full_name
+        elif obj.user_type == 'institution' and hasattr(obj, 'institution_profile'):
+            return obj.institution_profile.institution_name
+        elif obj.user_type == 'admin':
+            return 'Administrator'
+        return obj.email
+    
+    def get_profile_info(self, obj):
+        """Get additional profile information."""
+        if obj.user_type == 'author' and hasattr(obj, 'author_profile'):
+            return {
+                'institute': obj.author_profile.institute,
+                'designation': obj.author_profile.designation,
+                'orcid': obj.author_profile.orcid,
+            }
+        elif obj.user_type == 'institution' and hasattr(obj, 'institution_profile'):
+            return {
+                'institution_type': obj.institution_profile.institution_type,
+                'city': obj.institution_profile.city,
+                'country': obj.institution_profile.country,
+            }
+        return None
+    
+    def get_publications_count(self, obj):
+        """Get publication count for authors."""
+        if obj.user_type == 'author' and hasattr(obj, 'author_profile'):
+            from publications.models import Publication
+            return Publication.objects.filter(author=obj.author_profile).count()
+        return 0
+
+
+class AdminAuthorDetailSerializer(serializers.ModelSerializer):
+    """Detailed author serializer for admin editing."""
+    email = serializers.EmailField(source='user.email')
+    is_active = serializers.BooleanField(source='user.is_active')
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    created_at = serializers.DateTimeField(source='user.created_at', read_only=True)
+    updated_at = serializers.DateTimeField(source='user.updated_at', read_only=True)
+    stats = AuthorStatsSerializer(read_only=True)
+    publications_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Author
+        fields = [
+            'id', 'user_id', 'email', 'is_active',
+            'title', 'full_name', 'institute', 'designation',
+            'degree', 'gender', 'profile_picture', 'cv',
+            'bio', 'research_interests', 'orcid',
+            'google_scholar', 'researchgate', 'linkedin', 'website',
+            'created_at', 'updated_at', 'stats', 'publications_count'
+        ]
+        read_only_fields = ['id', 'user_id', 'created_at', 'updated_at']
+    
+    def get_publications_count(self, obj):
+        from publications.models import Publication
+        return Publication.objects.filter(author=obj).count()
+    
+    def update(self, instance, validated_data):
+        # Handle user fields separately
+        user_data = validated_data.pop('user', {})
+        
+        # Update user fields if provided
+        if 'email' in user_data:
+            instance.user.email = user_data['email']
+        if 'is_active' in user_data:
+            instance.user.is_active = user_data['is_active']
+        instance.user.save()
+        
+        # Update author profile fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        return instance
+
+
+class AdminInstitutionDetailSerializer(serializers.ModelSerializer):
+    """Detailed institution serializer for admin editing."""
+    email = serializers.EmailField(source='user.email')
+    is_active = serializers.BooleanField(source='user.is_active')
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    created_at = serializers.DateTimeField(source='user.created_at', read_only=True)
+    updated_at = serializers.DateTimeField(source='user.updated_at', read_only=True)
+    stats = InstitutionStatsSerializer(read_only=True)
+    
+    class Meta:
+        model = Institution
+        fields = [
+            'id', 'user_id', 'email', 'is_active',
+            'institution_name', 'institution_type', 'logo', 'description',
+            'address', 'city', 'state', 'country', 'postal_code', 'phone',
+            'website', 'established_year', 'research_areas', 'total_researchers',
+            'created_at', 'updated_at', 'stats'
+        ]
+        read_only_fields = ['id', 'user_id', 'created_at', 'updated_at']
+    
+    def update(self, instance, validated_data):
+        # Handle user fields separately
+        user_data = validated_data.pop('user', {})
+        
+        # Update user fields if provided
+        if 'email' in user_data:
+            instance.user.email = user_data['email']
+        if 'is_active' in user_data:
+            instance.user.is_active = user_data['is_active']
+        instance.user.save()
+        
+        # Update institution profile fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        return instance

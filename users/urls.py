@@ -24,6 +24,11 @@ from .views.follow.views import (
     UserFollowingView,
     FollowStatsView,
 )
+from .views.admin_views import (
+    AdminUserListView,
+    AdminAuthorDetailView,
+    AdminInstitutionDetailView,
+)
 
 urlpatterns = [
     # Registration endpoints
@@ -59,4 +64,9 @@ urlpatterns = [
     path('users/<int:user_id>/following/', UserFollowingView.as_view(), name='user-following'),
     path('follow-stats/', FollowStatsView.as_view(), name='my-follow-stats'),
     path('users/<int:user_id>/follow-stats/', FollowStatsView.as_view(), name='user-follow-stats'),
+    
+    # Admin User Management endpoints
+    path('admin/users/', AdminUserListView.as_view(), name='admin-user-list'),
+    path('admin/authors/<int:pk>/', AdminAuthorDetailView.as_view(), name='admin-author-detail'),
+    path('admin/institutions/<int:pk>/', AdminInstitutionDetailView.as_view(), name='admin-institution-detail'),
 ]

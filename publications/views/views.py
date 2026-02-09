@@ -1970,22 +1970,102 @@ class PublicJournalsListView(generics.ListAPIView):
     def get_queryset(self):
         queryset = Journal.objects.filter(
             is_active=True
-        ).select_related('institution', 'stats').prefetch_related('editorial_board', 'issues')
+        ).select_related('institution', 'stats', 'questionnaire').prefetch_related('editorial_board', 'issues')
         
         # Filter by institution
         institution_id = self.request.query_params.get('institution', None)
+        institutions = self.request.query_params.get('institutions', None)
         if institution_id:
             queryset = queryset.filter(institution_id=institution_id)
+        elif institutions:
+            queryset = queryset.filter(institution__institution_name__icontains=institutions)
         
-        # Filter by open access
+        # Filter by access type (open access)
+        access_type = self.request.query_params.get('access_type', None)
         is_open_access = self.request.query_params.get('open_access', None)
-        if is_open_access is not None:
+        if access_type:
+            if access_type.lower() in ['open_access', 'open access', 'true']:
+                queryset = queryset.filter(is_open_access=True)
+            elif access_type.lower() in ['subscription', 'false']:
+                queryset = queryset.filter(is_open_access=False)
+        elif is_open_access is not None:
             queryset = queryset.filter(is_open_access=is_open_access.lower() == 'true')
         
-        # Filter by peer reviewed
+        # Filter by category/discipline
+        category = self.request.query_params.get('category', None)
+        if category:
+            queryset = queryset.filter(
+                Q(questionnaire__main_discipline__icontains=category) |
+                Q(questionnaire__secondary_disciplines__icontains=category)
+            )
+        
+        # Filter by language
+        language = self.request.query_params.get('language', None)
+        if language:
+            queryset = queryset.filter(language__icontains=language)
+        
+        # Filter by license type
+        license = self.request.query_params.get('license', None)
+        if license:
+            queryset = queryset.filter(questionnaire__license_type__icontains=license)
+        
+        # Filter by year (established year)
+        years = self.request.query_params.get('years', None)
+        if years:
+            try:
+                year = int(years)
+                queryset = queryset.filter(established_year=year)
+            except ValueError:
+                pass
+        
+        # Filter by country (through institution)
+        country = self.request.query_params.get('country', None)
+        if country:
+            queryset = queryset.filter(institution__country__icontains=country)
+        
+        # Filter by peer review type
+        peer_review = self.request.query_params.get('peer_review', None)
         peer_reviewed = self.request.query_params.get('peer_reviewed', None)
-        if peer_reviewed is not None:
+        if peer_review:
+            queryset = queryset.filter(questionnaire__peer_review_type__icontains=peer_review)
+        elif peer_reviewed is not None:
             queryset = queryset.filter(peer_reviewed=peer_reviewed.lower() == 'true')
+        
+        # Filter by impact factor (minimum threshold)
+        impact_factor = self.request.query_params.get('impact_factor', None)
+        if impact_factor:
+            try:
+                min_impact = float(impact_factor)
+                queryset = queryset.filter(stats__impact_factor__gte=min_impact)
+            except (ValueError, TypeError):
+                pass
+        
+        # Filter by CiteScore (minimum threshold)
+        cite_score = self.request.query_params.get('cite_score', None)
+        if cite_score:
+            try:
+                min_cite = float(cite_score)
+                queryset = queryset.filter(stats__cite_score__gte=min_cite)
+            except (ValueError, TypeError):
+                pass
+        
+        # Filter by time to first decision (maximum weeks)
+        time_to_decision = self.request.query_params.get('time_to_decision', None)
+        if time_to_decision:
+            try:
+                max_weeks = int(time_to_decision)
+                queryset = queryset.filter(questionnaire__average_review_time_weeks__lte=max_weeks)
+            except (ValueError, TypeError):
+                pass
+        
+        # Filter by time to acceptance (maximum days)
+        time_to_acceptance = self.request.query_params.get('time_to_acceptance', None)
+        if time_to_acceptance:
+            try:
+                max_days = int(time_to_acceptance)
+                queryset = queryset.filter(stats__average_review_time__lte=max_days)
+            except (ValueError, TypeError):
+                pass
         
         # Search by title or description
         search = self.request.query_params.get('search', None)
@@ -1997,18 +2077,32 @@ class PublicJournalsListView(generics.ListAPIView):
                 Q(publisher_name__icontains=search)
             )
         
-        return queryset
+        return queryset.distinct()
     
     @extend_schema(
         tags=['Public Journals'],
         summary='List All Journals (Public)',
-        description='Retrieve all active journals. No authentication required. Supports filtering and search.',
+        description='Retrieve all active journals. No authentication required. Supports comprehensive filtering and search.',
         parameters=[
             OpenApiParameter(
                 name='institution',
                 type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
                 description='Filter by institution ID',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='institutions',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by institution name (partial match)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='access_type',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by access type (open_access, subscription)',
                 required=False,
             ),
             OpenApiParameter(
@@ -2019,10 +2113,80 @@ class PublicJournalsListView(generics.ListAPIView):
                 required=False,
             ),
             OpenApiParameter(
+                name='category',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by category/discipline (partial match)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='language',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by language (partial match)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='license',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by license type (cc_by, cc_by_sa, cc_by_nc, etc.)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='years',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by established year',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='country',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by country (partial match)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='peer_review',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by peer review type (single_blind, double_blind, open, etc.)',
+                required=False,
+            ),
+            OpenApiParameter(
                 name='peer_reviewed',
                 type=OpenApiTypes.BOOL,
                 location=OpenApiParameter.QUERY,
                 description='Filter by peer reviewed status (true/false)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='impact_factor',
+                type=OpenApiTypes.FLOAT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by minimum impact factor (e.g., 1.5 returns journals with IF >= 1.5)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='cite_score',
+                type=OpenApiTypes.FLOAT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by minimum CiteScore (e.g., 2.0 returns journals with CiteScore >= 2.0)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='time_to_decision',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by maximum time to first decision in weeks (e.g., 4 returns journals with <= 4 weeks)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='time_to_acceptance',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by maximum time to acceptance in days (e.g., 30 returns journals with <= 30 days)',
                 required=False,
             ),
             OpenApiParameter(

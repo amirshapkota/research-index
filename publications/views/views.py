@@ -1760,7 +1760,7 @@ class JournalQuestionnaireListView(generics.ListAPIView):
 class PublicPublicationsListView(generics.ListAPIView):
     """
     List all published publications publicly (no authentication required).
-    Supports filtering by publication type, topic, author, and search.
+    Supports comprehensive filtering by publication type, topic, author, year, journal, and more.
     """
     permission_classes = [AllowAny]
     serializer_class = PublicationListSerializer
@@ -1769,7 +1769,7 @@ class PublicPublicationsListView(generics.ListAPIView):
         queryset = Publication.objects.filter(
             is_published=True
         ).select_related(
-            'author', 'author__user', 'stats', 'topic_branch', 'topic_branch__topic'
+            'author', 'author__user', 'stats', 'topic_branch', 'topic_branch__topic', 'journal'
         ).prefetch_related('mesh_terms', 'citations', 'references')
         
         # Filter by publication type
@@ -1782,33 +1782,109 @@ class PublicPublicationsListView(generics.ListAPIView):
         if topic_branch_id:
             queryset = queryset.filter(topic_branch_id=topic_branch_id)
         
+        # Filter by topic (parent topic)
+        topic_id = self.request.query_params.get('topic', None)
+        if topic_id:
+            queryset = queryset.filter(topic_branch__topic_id=topic_id)
+        
         # Filter by author
         author_id = self.request.query_params.get('author', None)
         if author_id:
             queryset = queryset.filter(author_id=author_id)
         
-        # Search by title, abstract, or journal name
+        # Filter by journal
+        journal_id = self.request.query_params.get('journal', None)
+        if journal_id:
+            queryset = queryset.filter(journal_id=journal_id)
+        
+        # Filter by publication year
+        year = self.request.query_params.get('year', None)
+        if year:
+            try:
+                queryset = queryset.filter(published_date__year=int(year))
+            except ValueError:
+                pass  # Ignore invalid year values
+        
+        # Filter by year range
+        year_from = self.request.query_params.get('year_from', None)
+        year_to = self.request.query_params.get('year_to', None)
+        if year_from:
+            try:
+                queryset = queryset.filter(published_date__year__gte=int(year_from))
+            except ValueError:
+                pass
+        if year_to:
+            try:
+                queryset = queryset.filter(published_date__year__lte=int(year_to))
+            except ValueError:
+                pass
+        
+        # Filter by publisher
+        publisher = self.request.query_params.get('publisher', None)
+        if publisher:
+            queryset = queryset.filter(publisher__icontains=publisher)
+        
+        # Filter by citations count (minimum)
+        min_citations = self.request.query_params.get('min_citations', None)
+        if min_citations:
+            try:
+                queryset = queryset.filter(stats__citations_count__gte=int(min_citations))
+            except ValueError:
+                pass
+        
+        # Filter by h-index range on stats
+        h_index_min = self.request.query_params.get('h_index_min', None)
+        h_index_max = self.request.query_params.get('h_index_max', None)
+        if h_index_min:
+            try:
+                queryset = queryset.filter(author__stats__h_index__gte=int(h_index_min))
+            except ValueError:
+                pass
+        if h_index_max:
+            try:
+                queryset = queryset.filter(author__stats__h_index__lte=int(h_index_max))
+            except ValueError:
+                pass
+        
+        # Filter by DOI presence
+        has_doi = self.request.query_params.get('has_doi', None)
+        if has_doi and has_doi.lower() in ['true', '1', 'yes']:
+            queryset = queryset.exclude(doi='')
+        elif has_doi and has_doi.lower() in ['false', '0', 'no']:
+            queryset = queryset.filter(doi='')
+        
+        # Filter by PDF availability
+        has_pdf = self.request.query_params.get('has_pdf', None)
+        if has_pdf and has_pdf.lower() in ['true', '1', 'yes']:
+            queryset = queryset.exclude(pdf_file='')
+        elif has_pdf and has_pdf.lower() in ['false', '0', 'no']:
+            queryset = queryset.filter(Q(pdf_file='') | Q(pdf_file__isnull=True))
+        
+        # Search by title, abstract, doi, journal name, co-authors, or publisher
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
                 Q(title__icontains=search) |
                 Q(abstract__icontains=search) |
-                Q(journal_name__icontains=search) |
-                Q(co_authors__icontains=search)
+                Q(doi__icontains=search) |
+                Q(journal__journal_name__icontains=search) |
+                Q(co_authors__icontains=search) |
+                Q(publisher__icontains=search) |
+                Q(author__full_name__icontains=search)
             )
         
-        return queryset
+        return queryset.distinct()
     
     @extend_schema(
         tags=['Public Publications'],
         summary='List All Publications (Public)',
-        description='Retrieve all published publications. No authentication required. Supports filtering and search.',
+        description='Retrieve all published publications. No authentication required. Supports comprehensive filtering and search.',
         parameters=[
             OpenApiParameter(
                 name='type',
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by publication type (e.g., journal_article, conference_paper)',
+                description='Filter by publication type (journal_article, conference_paper, book_chapter, preprint, thesis, technical_report, poster, presentation, book, review, other)',
                 required=False,
             ),
             OpenApiParameter(
@@ -1819,6 +1895,13 @@ class PublicPublicationsListView(generics.ListAPIView):
                 required=False,
             ),
             OpenApiParameter(
+                name='topic',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by parent topic ID',
+                required=False,
+            ),
+            OpenApiParameter(
                 name='author',
                 type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
@@ -1826,10 +1909,80 @@ class PublicPublicationsListView(generics.ListAPIView):
                 required=False,
             ),
             OpenApiParameter(
+                name='journal',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by journal ID',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='year',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by specific publication year',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='year_from',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter publications from this year onwards',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='year_to',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter publications up to this year',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='publisher',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by publisher name (case-insensitive partial match)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='min_citations',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter publications with at least this many citations',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='h_index_min',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by minimum h-index of the author',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='h_index_max',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by maximum h-index of the author',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='has_doi',
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description='Filter by DOI availability (true/false)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='has_pdf',
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description='Filter by PDF availability (true/false)',
+                required=False,
+            ),
+            OpenApiParameter(
                 name='search',
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Search in title, abstract, journal name, or co-authors',
+                description='Search in title, abstract, DOI, journal name, co-authors, publisher, or author name',
                 required=False,
             ),
         ],
@@ -2477,7 +2630,7 @@ class PublicJournalVolumesView(APIView):
 class PublicInstitutionsListView(generics.ListAPIView):
     """
     List all institutions publicly (no authentication required).
-    Supports filtering and search.
+    Supports comprehensive filtering by country, type, city, research areas, and more.
     """
     permission_classes = [AllowAny]
     
@@ -2485,7 +2638,7 @@ class PublicInstitutionsListView(generics.ListAPIView):
         from users.models import Institution
         queryset = Institution.objects.select_related('user', 'stats').prefetch_related('journals')
         
-        # Filter by country
+        # Filter by country (exact match, case-insensitive)
         country = self.request.query_params.get('country', None)
         if country:
             queryset = queryset.filter(country__iexact=country)
@@ -2495,16 +2648,87 @@ class PublicInstitutionsListView(generics.ListAPIView):
         if institution_type:
             queryset = queryset.filter(institution_type=institution_type)
         
-        # Search by name, city, or description
+        # Filter by city
+        city = self.request.query_params.get('city', None)
+        if city:
+            queryset = queryset.filter(city__icontains=city)
+        
+        # Filter by state/province
+        state = self.request.query_params.get('state', None)
+        if state:
+            queryset = queryset.filter(state__icontains=state)
+        
+        # Filter by established year
+        established_year = self.request.query_params.get('established_year', None)
+        if established_year:
+            try:
+                queryset = queryset.filter(established_year=int(established_year))
+            except ValueError:
+                pass
+        
+        # Filter by year range
+        established_from = self.request.query_params.get('established_from', None)
+        established_to = self.request.query_params.get('established_to', None)
+        if established_from:
+            try:
+                queryset = queryset.filter(established_year__gte=int(established_from))
+            except ValueError:
+                pass
+        if established_to:
+            try:
+                queryset = queryset.filter(established_year__lte=int(established_to))
+            except ValueError:
+                pass
+        
+        # Filter by research areas
+        research_area = self.request.query_params.get('research_area', None)
+        if research_area:
+            queryset = queryset.filter(research_areas__icontains=research_area)
+        
+        # Filter by minimum number of researchers
+        min_researchers = self.request.query_params.get('min_researchers', None)
+        if min_researchers:
+            try:
+                queryset = queryset.filter(total_researchers__gte=int(min_researchers))
+            except ValueError:
+                pass
+        
+        # Filter by total publications (via stats)
+        min_publications = self.request.query_params.get('min_publications', None)
+        if min_publications:
+            try:
+                queryset = queryset.filter(stats__total_publications__gte=int(min_publications))
+            except ValueError:
+                pass
+        
+        # Filter by total citations (via stats)
+        min_citations = self.request.query_params.get('min_citations', None)
+        if min_citations:
+            try:
+                queryset = queryset.filter(stats__total_citations__gte=int(min_citations))
+            except ValueError:
+                pass
+        
+        # Filter by having a website
+        has_website = self.request.query_params.get('has_website', None)
+        if has_website and has_website.lower() in ['true', '1', 'yes']:
+            queryset = queryset.exclude(website='')
+        elif has_website and has_website.lower() in ['false', '0', 'no']:
+            queryset = queryset.filter(Q(website='') | Q(website__isnull=True))
+        
+        # Search by name, city, description, or research areas
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
                 Q(institution_name__icontains=search) |
                 Q(city__icontains=search) |
-                Q(description__icontains=search)
+                Q(state__icontains=search) |
+                Q(country__icontains=search) |
+                Q(description__icontains=search) |
+                Q(research_areas__icontains=search)
             )
         
-        return queryset
+        return queryset.distinct()
     
     def get_serializer_class(self):
         from users.serializers import InstitutionListSerializer
@@ -2513,27 +2737,97 @@ class PublicInstitutionsListView(generics.ListAPIView):
     @extend_schema(
         tags=['Public Institutions'],
         summary='List All Institutions (Public)',
-        description='Retrieve all institutions. No authentication required. Supports filtering and search.',
+        description='Retrieve all institutions. No authentication required. Supports comprehensive filtering and search.',
         parameters=[
             OpenApiParameter(
                 name='country',
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by country name',
+                description='Filter by country name (exact match, case-insensitive)',
                 required=False,
             ),
             OpenApiParameter(
                 name='type',
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by institution type (university, research_institute, hospital, etc.)',
+                description='Filter by institution type (university, research_institute, government, private, industry, hospital, other)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='city',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by city name (case-insensitive partial match)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='state',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by state/province (case-insensitive partial match)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='established_year',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter by specific establishment year',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='established_from',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter institutions established from this year onwards',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='established_to',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter institutions established up to this year',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='research_area',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by research area (case-insensitive partial match)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='min_researchers',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter institutions with at least this many researchers',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='min_publications',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter institutions with at least this many publications',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='min_citations',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter institutions with at least this many total citations',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='has_website',
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description='Filter by website availability (true/false)',
                 required=False,
             ),
             OpenApiParameter(
                 name='search',
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Search in institution name, city, or description',
+                description='Search in institution name, city, state, country, description, or research areas',
                 required=False,
             ),
         ],
@@ -2577,7 +2871,7 @@ class PublicInstitutionDetailView(generics.RetrieveAPIView):
 class PublicAuthorsListView(generics.ListAPIView):
     """
     List all authors publicly (no authentication required).
-    Supports filtering and search.
+    Supports comprehensive filtering by institute, designation, title, research interests, and more.
     """
     permission_classes = [AllowAny]
     
@@ -2585,27 +2879,126 @@ class PublicAuthorsListView(generics.ListAPIView):
         from users.models import Author
         queryset = Author.objects.select_related('user', 'stats')
         
-        # Filter by institute
+        # Filter by title (Dr., Prof., etc.)
+        title = self.request.query_params.get('title', None)
+        if title:
+            queryset = queryset.filter(title=title)
+        
+        # Filter by institute (partial match)
         institute = self.request.query_params.get('institute', None)
         if institute:
             queryset = queryset.filter(institute__icontains=institute)
         
-        # Filter by designation
+        # Filter by designation (partial match)
         designation = self.request.query_params.get('designation', None)
         if designation:
             queryset = queryset.filter(designation__icontains=designation)
         
-        # Search by name, institute, or research interests
+        # Filter by gender
+        gender = self.request.query_params.get('gender', None)
+        if gender:
+            queryset = queryset.filter(gender=gender)
+        
+        # Filter by degree
+        degree = self.request.query_params.get('degree', None)
+        if degree:
+            queryset = queryset.filter(degree__icontains=degree)
+        
+        # Filter by research interests
+        research_interest = self.request.query_params.get('research_interest', None)
+        if research_interest:
+            queryset = queryset.filter(research_interests__icontains=research_interest)
+        
+        # Filter by h-index range
+        h_index_min = self.request.query_params.get('h_index_min', None)
+        h_index_max = self.request.query_params.get('h_index_max', None)
+        if h_index_min:
+            try:
+                queryset = queryset.filter(stats__h_index__gte=int(h_index_min))
+            except ValueError:
+                pass
+        if h_index_max:
+            try:
+                queryset = queryset.filter(stats__h_index__lte=int(h_index_max))
+            except ValueError:
+                pass
+        
+        # Filter by i10-index range
+        i10_index_min = self.request.query_params.get('i10_index_min', None)
+        i10_index_max = self.request.query_params.get('i10_index_max', None)
+        if i10_index_min:
+            try:
+                queryset = queryset.filter(stats__i10_index__gte=int(i10_index_min))
+            except ValueError:
+                pass
+        if i10_index_max:
+            try:
+                queryset = queryset.filter(stats__i10_index__lte=int(i10_index_max))
+            except ValueError:
+                pass
+        
+        # Filter by total citations
+        min_citations = self.request.query_params.get('min_citations', None)
+        max_citations = self.request.query_params.get('max_citations', None)
+        if min_citations:
+            try:
+                queryset = queryset.filter(stats__total_citations__gte=int(min_citations))
+            except ValueError:
+                pass
+        if max_citations:
+            try:
+                queryset = queryset.filter(stats__total_citations__lte=int(max_citations))
+            except ValueError:
+                pass
+        
+        # Filter by total publications
+        min_publications = self.request.query_params.get('min_publications', None)
+        max_publications = self.request.query_params.get('max_publications', None)
+        if min_publications:
+            try:
+                queryset = queryset.filter(stats__total_publications__gte=int(min_publications))
+            except ValueError:
+                pass
+        if max_publications:
+            try:
+                queryset = queryset.filter(stats__total_publications__lte=int(max_publications))
+            except ValueError:
+                pass
+        
+        # Filter by ORCID presence
+        has_orcid = self.request.query_params.get('has_orcid', None)
+        if has_orcid and has_orcid.lower() in ['true', '1', 'yes']:
+            queryset = queryset.exclude(orcid='')
+        elif has_orcid and has_orcid.lower() in ['false', '0', 'no']:
+            queryset = queryset.filter(Q(orcid='') | Q(orcid__isnull=True))
+        
+        # Filter by Google Scholar presence
+        has_google_scholar = self.request.query_params.get('has_google_scholar', None)
+        if has_google_scholar and has_google_scholar.lower() in ['true', '1', 'yes']:
+            queryset = queryset.exclude(google_scholar='')
+        elif has_google_scholar and has_google_scholar.lower() in ['false', '0', 'no']:
+            queryset = queryset.filter(Q(google_scholar='') | Q(google_scholar__isnull=True))
+        
+        # Filter by website presence
+        has_website = self.request.query_params.get('has_website', None)
+        if has_website and has_website.lower() in ['true', '1', 'yes']:
+            queryset = queryset.exclude(website='')
+        elif has_website and has_website.lower() in ['false', '0', 'no']:
+            queryset = queryset.filter(Q(website='') | Q(website__isnull=True))
+        
+        # Search by name, institute, research interests, or bio
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
                 Q(full_name__icontains=search) |
                 Q(institute__icontains=search) |
+                Q(designation__icontains=search) |
+                Q(degree__icontains=search) |
                 Q(research_interests__icontains=search) |
                 Q(bio__icontains=search)
             )
         
-        return queryset
+        return queryset.distinct()
     
     def get_serializer_class(self):
         from users.serializers import AuthorListSerializer
@@ -2614,27 +3007,132 @@ class PublicAuthorsListView(generics.ListAPIView):
     @extend_schema(
         tags=['Public Authors'],
         summary='List All Authors (Public)',
-        description='Retrieve all authors. No authentication required. Supports filtering and search.',
+        description='Retrieve all authors. No authentication required. Supports comprehensive filtering and search.',
         parameters=[
+            OpenApiParameter(
+                name='title',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by title (Dr., Prof., Mr., Ms., Mrs.)',
+                required=False,
+            ),
             OpenApiParameter(
                 name='institute',
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by institute name',
+                description='Filter by institute name (case-insensitive partial match)',
                 required=False,
             ),
             OpenApiParameter(
                 name='designation',
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by designation',
+                description='Filter by designation (case-insensitive partial match)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='gender',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by gender (male, female, other, prefer_not_to_say)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='degree',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by highest degree (case-insensitive partial match)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='research_interest',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by research interest (case-insensitive partial match)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='h_index_min',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter authors with h-index at least this value',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='h_index_max',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter authors with h-index at most this value',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='i10_index_min',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter authors with i10-index at least this value',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='i10_index_max',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter authors with i10-index at most this value',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='min_citations',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter authors with at least this many total citations',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='max_citations',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter authors with at most this many total citations',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='min_publications',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter authors with at least this many publications',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='max_publications',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filter authors with at most this many publications',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='has_orcid',
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description='Filter by ORCID availability (true/false)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='has_google_scholar',
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description='Filter by Google Scholar profile availability (true/false)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='has_website',
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description='Filter by personal website availability (true/false)',
                 required=False,
             ),
             OpenApiParameter(
                 name='search',
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Search in author name, institute, bio, or research interests',
+                description='Search in author name, institute, designation, degree, research interests, or bio',
                 required=False,
             ),
         ],

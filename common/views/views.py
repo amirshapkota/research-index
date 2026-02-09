@@ -7,9 +7,9 @@ from drf_spectacular.types import OpenApiTypes
 from django.core.mail import send_mail
 from django.conf import settings
 from urllib.parse import unquote
-from .models import Contact
-from .serializers import ContactSerializer
-from .services.crossref import CrossrefService
+from ..models import Contact
+from ..serializers import ContactSerializer
+from ..services.crossref import CrossrefService
 
 
 class ContactCreateView(generics.CreateAPIView):

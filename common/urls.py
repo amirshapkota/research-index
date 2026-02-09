@@ -1,5 +1,5 @@
 from django.urls import path, re_path
-from .views import (
+from .views.views import (
     ContactCreateView,
     # Crossref API views
     CrossrefWorkByDOIView,
@@ -11,8 +11,8 @@ from .views import (
     CrossrefValidateDOIView,
     CrossrefSearchFundersView,
 )
-from .views_journal_import import ImportJournalFromCrossrefView
-from .views_nepjol import (
+from .views.journal_import.views import ImportJournalFromCrossrefView
+from .views.nepjol.views import (
     NepJOLImportStatusView,
     NepJOLImportStartView,
     NepJOLImportStopView,

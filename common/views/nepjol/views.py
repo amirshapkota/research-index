@@ -13,8 +13,8 @@ from datetime import datetime, timedelta
 import threading
 import json
 
-from .services.nepjol_scraper import NepJOLScraper
-from .management.commands.import_nepjol import Command as ImportCommand
+from ...services.nepjol_scraper import NepJOLScraper
+from ...management.commands.import_nepjol import Command as ImportCommand
 from publications.models import Journal, Publication, Issue
 from users.models import Institution
 

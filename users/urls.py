@@ -24,7 +24,7 @@ from .views.follow.views import (
     UserFollowingView,
     FollowStatsView,
 )
-from .views.admin_views import (
+from .views.admin.views import (
     AdminUserListView,
     AdminAuthorDetailView,
     AdminInstitutionDetailView,

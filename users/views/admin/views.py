@@ -6,8 +6,8 @@ from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 
-from ..models import CustomUser, Author, Institution
-from ..serializers import (
+from ...models import CustomUser, Author, Institution
+from ...serializers import (
     AdminUserListSerializer,
     AdminAuthorDetailSerializer,
     AdminInstitutionDetailSerializer

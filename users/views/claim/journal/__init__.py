@@ -1,0 +1,3 @@
+"""
+Journal claiming views.
+"""

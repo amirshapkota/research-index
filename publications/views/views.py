@@ -2731,7 +2731,7 @@ class PublicInstitutionsListView(generics.ListAPIView):
         return queryset.distinct()
     
     def get_serializer_class(self):
-        from users.serializers import InstitutionListSerializer
+        from researchindex.users.serializers.serializers import InstitutionListSerializer
         return InstitutionListSerializer
     
     @extend_schema(
@@ -2850,7 +2850,7 @@ class PublicInstitutionDetailView(generics.RetrieveAPIView):
         return Institution.objects.select_related('user', 'stats').prefetch_related('journals')
     
     def get_serializer_class(self):
-        from users.serializers import InstitutionDetailSerializer
+        from researchindex.users.serializers.serializers import InstitutionDetailSerializer
         return InstitutionDetailSerializer
     
     @extend_schema(
@@ -3001,7 +3001,7 @@ class PublicAuthorsListView(generics.ListAPIView):
         return queryset.distinct()
     
     def get_serializer_class(self):
-        from users.serializers import AuthorListSerializer
+        from researchindex.users.serializers.serializers import AuthorListSerializer
         return AuthorListSerializer
     
     @extend_schema(
@@ -3155,7 +3155,7 @@ class PublicAuthorDetailView(generics.RetrieveAPIView):
         return Author.objects.select_related('user', 'stats')
     
     def get_serializer_class(self):
-        from users.serializers import AuthorDetailSerializer
+        from researchindex.users.serializers.serializers import AuthorDetailSerializer
         return AuthorDetailSerializer
     
     @extend_schema(

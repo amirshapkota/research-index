@@ -15,6 +15,16 @@ from .views.views import (
     DeleteAccountView,
     RefreshAuthorStatsView
 )
+from .views.claim.author.views import (
+    SearchImportedAuthorsView,
+    ClaimAuthorAccountView,
+)
+from .views.claim.journal.views import (
+    SearchClaimableJournalsView,
+    ClaimJournalsWithInstitutionView,
+    ClaimJournalView,
+    ListMyJournalsView,
+)
 from .views.follow.views import (
     FollowUserView,
     UnfollowUserView,
@@ -34,6 +44,18 @@ urlpatterns = [
     # Registration endpoints
     path('register/author/', AuthorRegistrationView.as_view(), name='author-register'),
     path('register/institution/', InstitutionRegistrationView.as_view(), name='institution-register'),
+    
+    # Account Claiming endpoints (for imported authors only)
+    # Institutions are created via journal claiming, not account claiming
+    path('claim/authors/search/', SearchImportedAuthorsView.as_view(), name='claim-authors-search'),
+    path('claim/author/', ClaimAuthorAccountView.as_view(), name='claim-author'),
+    
+    # Journal Claiming endpoints
+    # Primary way to create institution accounts is by claiming journals
+    path('journals/claim/search/', SearchClaimableJournalsView.as_view(), name='journal-claim-search'),
+    path('journals/claim/create-institution/', ClaimJournalsWithInstitutionView.as_view(), name='claim-journals-create-institution'),
+    path('journals/claim/add/', ClaimJournalView.as_view(), name='claim-additional-journal'),  # For existing institutions
+    path('journals/my-journals/', ListMyJournalsView.as_view(), name='my-journals'),
     
     # Authentication endpoints
     path('login/', LoginView.as_view(), name='login'),

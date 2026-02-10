@@ -9,7 +9,7 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, Bl
 from django.contrib.auth import authenticate
 from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
-from ..serializers import (
+from ..serializers.serializers import (
     AuthorRegistrationSerializer, 
     InstitutionRegistrationSerializer,
     LoginSerializer,

@@ -3344,3 +3344,123 @@ class PublicInstitutionPublicationsView(generics.ListAPIView):
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
+
+# ==================== DOAJ API VIEWS ====================
+
+class DOAJSearchView(APIView):
+    """
+    Search journals in DOAJ (Directory of Open Access Journals)
+    Requires authentication
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['DOAJ'],
+        summary='Search DOAJ Journals',
+        description='Search for journals in the Directory of Open Access Journals (DOAJ) by title, ISSN, or keywords.',
+        parameters=[
+            OpenApiParameter(
+                name='q',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search query (journal title, ISSN, keywords)',
+                required=True,
+            ),
+            OpenApiParameter(
+                name='page',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Page number (default: 1)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='page_size',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Results per page (default: 10, max: 100)',
+                required=False,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='Search results from DOAJ',
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'total': {'type': 'integer'},
+                        'page': {'type': 'integer'},
+                        'page_size': {'type': 'integer'},
+                        'results': {'type': 'array'},
+                    }
+                }
+            ),
+            400: OpenApiResponse(description='Missing query parameter'),
+            500: OpenApiResponse(description='DOAJ API error'),
+        }
+    )
+    def get(self, request):
+        from ..doaj_api import DOAJAPI, DOAJAPIError
+        
+        query = request.query_params.get('q')
+        if not query:
+            return Response(
+                {'error': 'Query parameter "q" is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        page = int(request.query_params.get('page', 1))
+        page_size = min(int(request.query_params.get('page_size', 10)), 100)
+        
+        try:
+            results = DOAJAPI.search_journals(query, page, page_size)
+            return Response(results, status=status.HTTP_200_OK)
+        except DOAJAPIError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class DOAJJournalByISSNView(APIView):
+    """
+    Get journal details from DOAJ by ISSN
+    Requires authentication
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=['DOAJ'],
+        summary='Get DOAJ Journal by ISSN',
+        description='Retrieve journal details from DOAJ using ISSN (print or electronic).',
+        parameters=[
+            OpenApiParameter(
+                name='issn',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                description='Journal ISSN (with or without hyphen)',
+                required=True,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(description='Journal details from DOAJ'),
+            404: OpenApiResponse(description='Journal not found in DOAJ'),
+            500: OpenApiResponse(description='DOAJ API error'),
+        }
+    )
+    def get(self, request, issn):
+        from ..doaj_api import DOAJAPI, DOAJAPIError
+        
+        try:
+            journal = DOAJAPI.get_journal_by_issn(issn)
+            if journal:
+                return Response(journal, status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {'error': f'Journal with ISSN {issn} not found in DOAJ'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        except DOAJAPIError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

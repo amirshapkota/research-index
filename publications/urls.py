@@ -44,6 +44,9 @@ from .views.views import (
     PublicAuthorDetailView,
     PublicAuthorPublicationsView,
     PublicInstitutionPublicationsView,
+    # DOAJ views
+    DOAJSearchView,
+    DOAJJournalByISSNView,
 )
 from .views.sync.views import sync_external_publications
 
@@ -134,6 +137,12 @@ urlpatterns = [
     
     # Retrieve/Update/Delete a specific questionnaire
     path('questionnaires/<int:pk>/', JournalQuestionnaireDetailView.as_view(), name='questionnaire-detail'),
+    
+    # ==================== DOAJ API ====================
+    # Search DOAJ journals
+    path('doaj/search/', DOAJSearchView.as_view(), name='doaj-search'),
+    # Get journal by ISSN from DOAJ
+    path('doaj/issn/<str:issn>/', DOAJJournalByISSNView.as_view(), name='doaj-journal-by-issn'),
     
     # ==================== ADMIN ENDPOINTS ====================
     # Sync from external journal portal

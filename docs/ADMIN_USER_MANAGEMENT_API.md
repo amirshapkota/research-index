@@ -1,25 +1,31 @@
 # Admin User Management API
 
 ## Overview
+
 Admin user management endpoints allow administrators to view, edit, and delete user accounts (both authors and institutions) in the system.
 
 ## Authentication
+
 All endpoints require admin authentication:
+
 - User must be authenticated
 - User must have `user_type = 'admin'` or `is_staff = True`
 
 ## Endpoints
 
 ### 1. List All Users
+
 **GET** `/users/admin/users/`
 
 List all users in the system with filtering and search capabilities.
 
 **Query Parameters:**
+
 - `user_type` (optional): Filter by user type (`author`, `institution`, `admin`)
 - `search` (optional): Search by email, author name, or institution name
 
 **Response:**
+
 ```json
 [
   {
@@ -42,11 +48,13 @@ List all users in the system with filtering and search capabilities.
 ```
 
 ### 2. Get Author Details
+
 **GET** `/users/admin/authors/{id}/`
 
 Retrieve detailed information about a specific author.
 
 **Response:**
+
 ```json
 {
   "id": 1,
@@ -86,11 +94,13 @@ Retrieve detailed information about a specific author.
 ```
 
 ### 3. Update Author
+
 **PATCH** `/users/admin/authors/{id}/`
 
 Update author profile information.
 
 **Request Body:**
+
 ```json
 {
   "email": "newemail@example.com",
@@ -103,19 +113,24 @@ Update author profile information.
 ```
 
 **Response:**
+
 ```json
 {
   "message": "Author updated successfully",
-  "author": { /* Author detail object */ }
+  "author": {
+    /* Author detail object */
+  }
 }
 ```
 
 ### 4. Delete Author
+
 **DELETE** `/users/admin/authors/{id}/`
 
 Delete an author and their associated user account (cascades).
 
 **Response:**
+
 ```json
 {
   "message": "Author \"Dr. John Doe\" has been deleted successfully"
@@ -123,11 +138,13 @@ Delete an author and their associated user account (cascades).
 ```
 
 ### 5. Get Institution Details
+
 **GET** `/users/admin/institutions/{id}/`
 
 Retrieve detailed information about a specific institution.
 
 **Response:**
+
 ```json
 {
   "id": 1,
@@ -165,11 +182,13 @@ Retrieve detailed information about a specific institution.
 ```
 
 ### 6. Update Institution
+
 **PATCH** `/users/admin/institutions/{id}/`
 
 Update institution profile information.
 
 **Request Body:**
+
 ```json
 {
   "email": "newemail@institution.com",
@@ -182,19 +201,24 @@ Update institution profile information.
 ```
 
 **Response:**
+
 ```json
 {
   "message": "Institution updated successfully",
-  "institution": { /* Institution detail object */ }
+  "institution": {
+    /* Institution detail object */
+  }
 }
 ```
 
 ### 7. Delete Institution
+
 **DELETE** `/users/admin/institutions/{id}/`
 
 Delete an institution and their associated user account (cascades).
 
 **Response:**
+
 ```json
 {
   "message": "Institution \"Example University\" has been deleted successfully"
@@ -204,6 +228,7 @@ Delete an institution and their associated user account (cascades).
 ## Error Responses
 
 ### 403 Forbidden
+
 ```json
 {
   "error": "Admin permission required"
@@ -211,6 +236,7 @@ Delete an institution and their associated user account (cascades).
 ```
 
 ### 404 Not Found
+
 ```json
 {
   "error": "Author/Institution not found"
@@ -218,6 +244,7 @@ Delete an institution and their associated user account (cascades).
 ```
 
 ### 400 Bad Request
+
 ```json
 {
   "field_name": ["Error message"]
@@ -227,6 +254,7 @@ Delete an institution and their associated user account (cascades).
 ## Implementation Details
 
 ### Backend Files
+
 - **Serializers**: `backend-research-index/users/serializers.py`
   - `AdminUserListSerializer`: For listing users
   - `AdminAuthorDetailSerializer`: For author CRUD operations
@@ -243,6 +271,7 @@ Delete an institution and their associated user account (cascades).
   - `/users/admin/institutions/<int:pk>/`
 
 ### Frontend Implementation
+
 - **Location**: `frontend-research-index/features/panel/admin/users/`
 - **Components**:
   - `UsersList.tsx`: Main table with search and filters
@@ -261,6 +290,7 @@ Delete an institution and their associated user account (cascades).
 ## Features
 
 ### User List
+
 - View all users (authors, institutions, admins)
 - Filter by user type
 - Search by email, name, or institution name
@@ -268,17 +298,20 @@ Delete an institution and their associated user account (cascades).
 - Quick access to edit and delete actions
 
 ### Edit Capabilities
+
 - Update email and account status (active/inactive)
 - Edit all profile fields
 - Real-time validation
 - Automatic cache invalidation on updates
 
 ### Delete Operations
+
 - Confirmation dialog before deletion
 - Cascading deletion (removes user account and all associated data)
 - Cannot delete admin users from the interface
 
 ## Security Considerations
+
 - All endpoints check for admin authentication
 - Super admin cannot be deleted through these endpoints
 - Email uniqueness is enforced
@@ -287,12 +320,14 @@ Delete an institution and their associated user account (cascades).
 ## Usage Example
 
 ### Admin Panel Integration
+
 Add to admin panel navigation:
+
 ```tsx
 import { UsersList } from "@/features/panel/admin/users";
 
 // In admin layout or router
-<Route path="/admin/users" element={<UsersList />} />
+<Route path="/admin/users" element={<UsersList />} />;
 ```
 
 The component handles all data fetching, state management, and user interactions internally.

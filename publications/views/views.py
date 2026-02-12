@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.db import IntegrityError
 from django.views import View
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
@@ -1234,7 +1235,15 @@ class EditorialBoardListCreateView(APIView):
             
             serializer = EditorialBoardMemberSerializer(data=request.data, context={'request': request})
             serializer.is_valid(raise_exception=True)
-            member = serializer.save(journal=journal)
+            
+            try:
+                member = serializer.save(journal=journal)
+            except IntegrityError as e:
+                if 'publications_editorialbo_journal_id_email' in str(e):
+                    return Response({
+                        'error': 'An editorial board member with this email already exists for this journal.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                raise
             
             return Response({
                 'message': 'Editorial board member added successfully',
@@ -1296,7 +1305,15 @@ class EditorialBoardDetailView(APIView):
                 context={'request': request}
             )
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            
+            try:
+                serializer.save()
+            except IntegrityError as e:
+                if 'publications_editorialbo_journal_id_email' in str(e):
+                    return Response({
+                        'error': 'An editorial board member with this email already exists for this journal.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                raise
             
             return Response({
                 'message': 'Editorial board member updated successfully',
@@ -1327,7 +1344,15 @@ class EditorialBoardDetailView(APIView):
                 context={'request': request}
             )
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            
+            try:
+                serializer.save()
+            except IntegrityError as e:
+                if 'publications_editorialbo_journal_id_email' in str(e):
+                    return Response({
+                        'error': 'An editorial board member with this email already exists for this journal.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                raise
             
             return Response({
                 'message': 'Editorial board member updated successfully',

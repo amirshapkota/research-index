@@ -14,6 +14,7 @@ from .views.views import (
     JournalStatsView,
     RefreshJournalStatsView,
     EditorialBoardListCreateView,
+    EditorialBoardDetailView,
     # Issue views
     IssueListCreateView,
     IssueDetailView,
@@ -120,6 +121,7 @@ urlpatterns = [
     
     # Editorial Board
     path('journals/<int:journal_pk>/editorial-board/', EditorialBoardListCreateView.as_view(), name='editorial-board-list-create'),
+    path('journals/<int:journal_pk>/editorial-board/<int:pk>/', EditorialBoardDetailView.as_view(), name='editorial-board-detail'),
     
     # Issue CRUD
     path('journals/<int:journal_pk>/issues/', IssueListCreateView.as_view(), name='issue-list-create'),

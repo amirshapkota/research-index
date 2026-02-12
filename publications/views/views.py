@@ -1180,6 +1180,7 @@ class EditorialBoardListCreateView(APIView):
     List or add editorial board members for a journal.
     """
     permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
     
     @extend_schema(
         tags=['Journals'],
@@ -1224,6 +1225,121 @@ class EditorialBoardListCreateView(APIView):
                 'message': 'Editorial board member added successfully',
                 'member': EditorialBoardMemberSerializer(member, context={'request': request}).data
             }, status=status.HTTP_201_CREATED)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class EditorialBoardDetailView(APIView):
+    """
+    Retrieve, update or delete a single editorial board member.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+    
+    def get_object(self, journal_pk, pk, institution):
+        """Helper to get member and verify ownership"""
+        journal = get_object_or_404(Journal, pk=journal_pk, institution=institution)
+        return get_object_or_404(EditorialBoardMember, pk=pk, journal=journal)
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Get Editorial Board Member',
+        description='Retrieve a single editorial board member.',
+        responses={
+            200: EditorialBoardMemberSerializer,
+            404: OpenApiResponse(description='Member not found'),
+        }
+    )
+    def get(self, request, journal_pk, pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            member = self.get_object(journal_pk, pk, institution)
+            serializer = EditorialBoardMemberSerializer(member, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Update Editorial Board Member',
+        description='Update an editorial board member.',
+        request=EditorialBoardMemberSerializer,
+        responses={
+            200: EditorialBoardMemberSerializer,
+            404: OpenApiResponse(description='Member not found'),
+        }
+    )
+    def put(self, request, journal_pk, pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            member = self.get_object(journal_pk, pk, institution)
+            
+            serializer = EditorialBoardMemberSerializer(
+                member, 
+                data=request.data, 
+                partial=False,
+                context={'request': request}
+            )
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            
+            return Response({
+                'message': 'Editorial board member updated successfully',
+                'member': serializer.data
+            }, status=status.HTTP_200_OK)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Partial Update Editorial Board Member',
+        description='Partially update an editorial board member.',
+        request=EditorialBoardMemberSerializer,
+        responses={
+            200: EditorialBoardMemberSerializer,
+            404: OpenApiResponse(description='Member not found'),
+        }
+    )
+    def patch(self, request, journal_pk, pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            member = self.get_object(journal_pk, pk, institution)
+            
+            serializer = EditorialBoardMemberSerializer(
+                member, 
+                data=request.data, 
+                partial=True,
+                context={'request': request}
+            )
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            
+            return Response({
+                'message': 'Editorial board member updated successfully',
+                'member': serializer.data
+            }, status=status.HTTP_200_OK)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Delete Editorial Board Member',
+        description='Delete an editorial board member.',
+        responses={
+            200: OpenApiResponse(description='Member deleted successfully'),
+            404: OpenApiResponse(description='Member not found'),
+        }
+    )
+    def delete(self, request, journal_pk, pk):
+        try:
+            institution = Institution.objects.get(user=request.user)
+            member = self.get_object(journal_pk, pk, institution)
+            member_name = member.name
+            member.delete()
+            
+            return Response({
+                'message': f'Editorial board member "{member_name}" deleted successfully'
+            }, status=status.HTTP_200_OK)
         except Institution.DoesNotExist:
             return Response({'error': 'Institution profile not found'}, status=status.HTTP_404_NOT_FOUND)
 

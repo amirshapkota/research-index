@@ -1,11 +1,21 @@
 from rest_framework import generics, status, parsers
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.views import View
+from django.http import HttpResponse, JsonResponse
+from django.utils import timezone
+from datetime import timedelta
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib import colors
+from io import BytesIO
 
 from ..models import (
     Publication, MeSHTerm, PublicationStats, 
@@ -28,7 +38,12 @@ from ..serializers import (
     JournalQuestionnaireListSerializer, JournalQuestionnaireDetailSerializer,
     JournalQuestionnaireCreateUpdateSerializer
 )
+from ..services import CrossrefCitationAPI
 from users.models import Author, Institution
+import logging
+import time
+
+logger = logging.getLogger(__name__)
 
 
 # ==================== TOPIC VIEWS ====================
@@ -3607,3 +3622,638 @@ class DOAJJournalByISSNView(APIView):
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+from django.views import View
+
+class ExportJournalView(View):
+    """
+    Export journal details in various formats (JSON, CSV, PDF).
+    Public endpoint - no authentication required.
+    Uses regular Django View to bypass DRF content negotiation.
+    """
+    
+    def get(self, request, pk):
+        import csv
+        import json
+        from django.http import HttpResponse, JsonResponse
+        from io import StringIO
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        # Get the journal (only active journals)
+        try:
+            journal = Journal.objects.select_related('institution').prefetch_related('editorial_board').filter(
+                is_active=True
+            ).get(pk=pk)
+        except Journal.DoesNotExist:
+            return JsonResponse({'error': 'Journal not found'}, status=404)
+        
+        # Get export format from query params (default: json)
+        export_format = request.GET.get('format', 'json').lower()
+        logger.info(f"Export request for journal {pk}, format: {export_format}")
+        
+        # Create safe filename
+        import re
+        safe_title = journal.short_title or journal.title
+        safe_filename = re.sub(r'[^\w\s-]', '', safe_title)[:50]  # Remove special chars, limit length
+        safe_filename = re.sub(r'[-\s]+', '_', safe_filename)  # Replace spaces/hyphens with underscore
+        safe_filename = safe_filename.strip('_') or f'journal_{journal.id}'  # Fallback to ID if empty
+        
+        # Prepare journal data
+        journal_data = {
+            'id': journal.id,
+            'title': journal.title,
+            'short_title': journal.short_title,
+            'issn': journal.issn,
+            'e_issn': journal.e_issn,
+            'doi_prefix': journal.doi_prefix,
+            'description': journal.description,
+            'scope': journal.scope,
+            'institution_name': journal.institution.institution_name if journal.institution else '',
+            'publisher_name': journal.publisher_name,
+            'frequency': journal.get_frequency_display(),
+            'established_year': journal.established_year,
+            'is_open_access': journal.is_open_access,
+            'peer_reviewed': journal.peer_reviewed,
+            'language': journal.language,
+            'contact_email': journal.contact_email,
+            'contact_phone': journal.contact_phone,
+            'contact_address': journal.contact_address,
+            'website': journal.website,
+        }
+        
+        # Add stats if available
+        if hasattr(journal, 'stats'):
+            journal_data.update({
+                'total_publications': journal.stats.total_publications,
+                'total_issues': journal.stats.total_issues,
+                'total_citations': journal.stats.total_citations,
+                'impact_factor': str(journal.stats.impact_factor) if journal.stats.impact_factor else None,
+                'h_index': journal.stats.h_index,
+            })
+        
+        # Handle different export formats
+        if export_format == 'json':
+            response = JsonResponse(journal_data, json_dumps_params={'indent': 2})
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.json"'
+            return response
+            
+        elif export_format == 'csv':
+            # Create CSV
+            output = StringIO()
+            writer = csv.writer(output)
+            
+            # Write headers and values
+            writer.writerow(['Field', 'Value'])
+            for key, value in journal_data.items():
+                writer.writerow([key, value])
+            
+            response = HttpResponse(output.getvalue(), content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.csv"'
+            return response
+            
+        elif export_format == 'pdf':
+            # Generate actual PDF using reportlab
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter, 
+                                   rightMargin=72, leftMargin=72,
+                                   topMargin=72, bottomMargin=18)
+            
+            # Container for PDF elements
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            # Custom styles
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                textColor=colors.HexColor('#1a1a1a'),
+                spaceAfter=30,
+            )
+            
+            heading_style = ParagraphStyle(
+                'CustomHeading',
+                parent=styles['Heading2'],
+                fontSize=12,
+                textColor=colors.HexColor('#333333'),
+                spaceAfter=12,
+            )
+            
+            normal_style = styles['Normal']
+            
+            # Add title
+            elements.append(Paragraph("JOURNAL EXPORT REPORT", title_style))
+            elements.append(Spacer(1, 0.2 * inch))
+            
+            # Basic Information
+            elements.append(Paragraph("Basic Information", heading_style))
+            basic_data = [
+                ['Title:', journal.title or 'N/A'],
+                ['Short Title:', journal.short_title or 'N/A'],
+                ['ISSN:', journal.issn or 'N/A'],
+                ['E-ISSN:', journal.e_issn or 'N/A'],
+                ['DOI Prefix:', journal.doi_prefix or 'N/A'],
+                ['Institution:', journal.institution.institution_name if journal.institution else 'N/A'],
+                ['Publisher:', journal.publisher_name or 'N/A'],
+                ['Frequency:', journal.get_frequency_display()],
+                ['Established Year:', str(journal.established_year) if journal.established_year else 'N/A'],
+            ]
+            basic_table = Table(basic_data, colWidths=[2*inch, 4*inch])
+            basic_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(basic_table)
+            elements.append(Spacer(1, 0.3 * inch))
+            
+            # Access & Review Information
+            elements.append(Paragraph("Access & Review Information", heading_style))
+            access_data = [
+                ['Open Access:', 'Yes' if journal.is_open_access else 'No'],
+                ['Peer Reviewed:', 'Yes' if journal.peer_reviewed else 'No'],
+                ['Language:', journal.language or 'N/A'],
+            ]
+            access_table = Table(access_data, colWidths=[2*inch, 4*inch])
+            access_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(access_table)
+            elements.append(Spacer(1, 0.3 * inch))
+            
+            # Contact Information
+            elements.append(Paragraph("Contact Information", heading_style))
+            contact_data = [
+                ['Email:', journal.contact_email or 'N/A'],
+                ['Phone:', journal.contact_phone or 'N/A'],
+                ['Address:', journal.contact_address or 'N/A'],
+                ['Website:', journal.website or 'N/A'],
+            ]
+            contact_table = Table(contact_data, colWidths=[2*inch, 4*inch])
+            contact_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(contact_table)
+            elements.append(Spacer(1, 0.3 * inch))
+            
+            # Statistics
+            elements.append(Paragraph("Statistics", heading_style))
+            stats_data = [
+                ['Total Publications:', str(journal.stats.total_publications) if hasattr(journal, 'stats') else 'N/A'],
+                ['Total Issues:', str(journal.stats.total_issues) if hasattr(journal, 'stats') else 'N/A'],
+                ['Total Citations:', str(journal.stats.total_citations) if hasattr(journal, 'stats') else 'N/A'],
+                ['Impact Factor:', str(journal.stats.impact_factor) if hasattr(journal, 'stats') else 'N/A'],
+                ['H-Index:', str(journal.stats.h_index) if hasattr(journal, 'stats') else 'N/A'],
+            ]
+            stats_table = Table(stats_data, colWidths=[2*inch, 4*inch])
+            stats_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(stats_table)
+            elements.append(Spacer(1, 0.3 * inch))
+            
+            # Description
+            if journal.description:
+                elements.append(Paragraph("Description", heading_style))
+                # Escape HTML characters and handle line breaks
+                desc_text = journal.description.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                desc_text = desc_text.replace('\n', '<br/>')
+                elements.append(Paragraph(desc_text, normal_style))
+                elements.append(Spacer(1, 0.3 * inch))
+            
+            # Scope
+            if journal.scope:
+                elements.append(Paragraph("Scope", heading_style))
+                scope_text = journal.scope.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                scope_text = scope_text.replace('\n', '<br/>')
+                elements.append(Paragraph(scope_text, normal_style))
+            
+            # Build PDF
+            doc.build(elements)
+            
+            # Get PDF data
+            pdf_data = buffer.getvalue()
+            buffer.close()
+            
+            response = HttpResponse(pdf_data, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.pdf"'
+            return response
+        else:
+            return JsonResponse(
+                {'error': 'Invalid format. Supported formats: json, csv, pdf'},
+                status=400
+            )
+
+
+class ShareJournalView(APIView):
+    """
+    Generate shareable link and metadata for journal.
+    Public endpoint - no authentication required.
+    """
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        tags=['Journals'],
+        summary='Get Journal Share Information',
+        description='Get shareable link and metadata for social media sharing.',
+        parameters=[
+            OpenApiParameter(
+                name='pk',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='Journal ID',
+                required=True,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(description='Share information including URL and metadata'),
+            404: OpenApiResponse(description='Journal not found'),
+        }
+    )
+    def get(self, request, pk):
+        # Get the journal (only active journals)
+        try:
+            journal = Journal.objects.select_related('institution', 'stats').filter(
+                is_active=True
+            ).get(pk=pk)
+        except Journal.DoesNotExist:
+            return Response({'error': 'Journal not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Build the full URL for sharing (pointing to frontend)
+        from django.conf import settings
+        frontend_base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        frontend_url = f"{frontend_base_url}/journals/{pk}"
+        
+        # Get cover image URL if available
+        cover_image_url = None
+        if journal.cover_image:
+            try:
+                cover_image_url = request.build_absolute_uri(journal.cover_image.url)
+            except Exception:
+                cover_image_url = None
+        
+        # Prepare share data
+        share_data = {
+            'url': frontend_url,
+            'title': journal.title,
+            'description': journal.description[:200] if journal.description else f"Explore {journal.title} - {journal.institution.institution_name if journal.institution else 'Journal'}",
+            'image': cover_image_url,
+            'metadata': {
+                'issn': journal.issn,
+                'e_issn': journal.e_issn,
+                'publisher': journal.publisher_name,
+                'institution': journal.institution.institution_name if journal.institution else None,
+                'is_open_access': journal.is_open_access,
+                'impact_factor': str(journal.stats.impact_factor) if hasattr(journal, 'stats') and journal.stats.impact_factor else None,
+            },
+            'social_share_urls': {
+                'twitter': f"https://twitter.com/intent/tweet?url={frontend_url}&text={journal.title}",
+                'facebook': f"https://www.facebook.com/sharer/sharer.php?u={frontend_url}",
+                'linkedin': f"https://www.linkedin.com/sharing/share-offsite/?url={frontend_url}",
+                'whatsapp': f"https://wa.me/?text={journal.title}%20{frontend_url}",
+                'email': f"mailto:?subject={journal.title}&body=Check out this journal: {frontend_url}",
+            }
+        }
+        
+        return Response(share_data, status=status.HTTP_200_OK)
+
+
+# ==================== ADMIN ENDPOINTS ====================
+
+class SyncCitationsAdminView(APIView):
+    """
+    Admin endpoint to sync citation counts from Crossref API.
+    
+    Fetches citation counts for publications with DOIs from the Crossref API
+    and updates the PublicationStats.citations_count field.
+    """
+    permission_classes = [IsAdminUser]
+    
+    @extend_schema(
+        tags=['Admin'],
+        summary='Sync Citations from Crossref (Admin)',
+        description='Sync citation counts from Crossref API for publications with DOIs. Admin only.',
+        parameters=[
+            OpenApiParameter(
+                name='limit',
+                type=int,
+                description='Limit number of publications to sync',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='journal_id',
+                type=int,
+                description='Sync citations only for publications in a specific journal',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='force',
+                type=bool,
+                description='Force re-sync even if recently updated (within 7 days)',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='delay',
+                type=float,
+                description='Delay between API requests in seconds (default: 0.1)',
+                required=False,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='Citation sync completed',
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'message': {'type': 'string'},
+                        'total_processed': {'type': 'integer'},
+                        'success_count': {'type': 'integer'},
+                        'updated_count': {'type': 'integer'},
+                        'unchanged_count': {'type': 'integer'},
+                        'error_count': {'type': 'integer'},
+                        'details': {'type': 'array'},
+                    }
+                }
+            ),
+            403: OpenApiResponse(description='Admin permission required'),
+        }
+    )
+    def post(self, request):
+        # Get query parameters
+        limit = request.query_params.get('limit')
+        journal_id = request.query_params.get('journal_id')
+        force = request.query_params.get('force', 'false').lower() == 'true'
+        delay = float(request.query_params.get('delay', 0.1))
+        
+        if limit:
+            limit = int(limit)
+        if journal_id:
+            journal_id = int(journal_id)
+        
+        # Build query
+        query = Publication.objects.filter(
+            is_published=True,
+            doi__isnull=False
+        ).exclude(doi='').select_related('stats', 'journal')
+        
+        if journal_id:
+            query = query.filter(journal_id=journal_id)
+        
+        # Skip recently updated unless forced
+        if not force:
+            cutoff_date = timezone.now() - timedelta(days=7)
+            query = query.exclude(stats__last_updated__gte=cutoff_date)
+        
+        if limit:
+            query = query[:limit]
+        
+        publications = list(query)
+        total = len(publications)
+        
+        if total == 0:
+            return Response({
+                'message': 'No publications found to sync',
+                'total_processed': 0,
+                'success_count': 0,
+                'error_count': 0,
+            }, status=status.HTTP_200_OK)
+        
+        # Initialize Crossref API
+        api = CrossrefCitationAPI()
+        
+        # Process publications
+        success_count = 0
+        error_count = 0
+        updated_count = 0
+        unchanged_count = 0
+        details = []
+        
+        for idx, publication in enumerate(publications, 1):
+            try:
+                # Fetch citation count from Crossref
+                citation_count = api.get_citation_count(publication.doi)
+                
+                if citation_count is not None:
+                    # Get or create stats
+                    stats, created = PublicationStats.objects.get_or_create(
+                        publication=publication
+                    )
+                    
+                    old_count = stats.citations_count
+                    
+                    # Update citation count
+                    stats.citations_count = citation_count
+                    stats.save()
+                    
+                    success_count += 1
+                    
+                    if old_count != citation_count:
+                        updated_count += 1
+                        details.append({
+                            'id': publication.id,
+                            'title': publication.title[:60],
+                            'doi': publication.doi,
+                            'old_citations': old_count,
+                            'new_citations': citation_count,
+                            'status': 'updated'
+                        })
+                    else:
+                        unchanged_count += 1
+                        details.append({
+                            'id': publication.id,
+                            'title': publication.title[:60],
+                            'doi': publication.doi,
+                            'citations': citation_count,
+                            'status': 'unchanged'
+                        })
+                else:
+                    error_count += 1
+                    details.append({
+                        'id': publication.id,
+                        'title': publication.title[:60],
+                        'doi': publication.doi,
+                        'status': 'error',
+                        'error': 'Could not fetch citation count'
+                    })
+                
+                # Delay to respect rate limits
+                if idx < total:
+                    time.sleep(delay)
+                    
+            except Exception as e:
+                error_count += 1
+                details.append({
+                    'id': publication.id,
+                    'title': publication.title[:60],
+                    'doi': publication.doi,
+                    'status': 'error',
+                    'error': str(e)
+                })
+                logger.exception(f"Error syncing citations for publication {publication.id}")
+        
+        return Response({
+            'message': 'Citation sync completed',
+            'total_processed': total,
+            'success_count': success_count,
+            'updated_count': updated_count,
+            'unchanged_count': unchanged_count,
+            'error_count': error_count,
+            'details': details,
+            'tip': 'Run recalculate-stats endpoint to update journal metrics based on new citation data'
+        }, status=status.HTTP_200_OK)
+
+
+class RecalculateStatsAdminView(APIView):
+    """
+    Admin endpoint to recalculate statistics for journals.
+    
+    Recalculates h-index, impact factor, cite score, total citations, reads,
+    and other metrics based on current publications data.
+    """
+    permission_classes = [IsAdminUser]
+    
+    @extend_schema(
+        tags=['Admin'],
+        summary='Recalculate Journal Statistics (Admin)',
+        description='Recalculate statistics for all journals or a specific journal. Admin only.',
+        parameters=[
+            OpenApiParameter(
+                name='journal_id',
+                type=int,
+                description='Recalculate stats for a specific journal ID',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='create_missing',
+                type=bool,
+                description='Create JournalStats for journals that don\'t have them (default: true)',
+                required=False,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='Stats recalculation completed',
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'message': {'type': 'string'},
+                        'total_journals': {'type': 'integer'},
+                        'success_count': {'type': 'integer'},
+                        'created_count': {'type': 'integer'},
+                        'error_count': {'type': 'integer'},
+                        'details': {'type': 'array'},
+                    }
+                }
+            ),
+            404: OpenApiResponse(description='Journal not found'),
+            403: OpenApiResponse(description='Admin permission required'),
+        }
+    )
+    def post(self, request):
+        # Get query parameters
+        journal_id = request.query_params.get('journal_id')
+        create_missing = request.query_params.get('create_missing', 'true').lower() == 'true'
+        
+        if journal_id:
+            journal_id = int(journal_id)
+        
+        if journal_id:
+            # Recalculate for specific journal
+            try:
+                journal = Journal.objects.get(id=journal_id)
+                stats, created = JournalStats.objects.get_or_create(journal=journal)
+                stats.update_stats()
+                
+                return Response({
+                    'message': f'Successfully recalculated stats for journal: {journal.title}',
+                    'journal': {
+                        'id': journal.id,
+                        'title': journal.title,
+                        'total_articles': stats.total_articles,
+                        'total_issues': stats.total_issues,
+                        'total_citations': stats.total_citations,
+                        'impact_factor': str(stats.impact_factor) if stats.impact_factor else None,
+                        'cite_score': str(stats.cite_score) if stats.cite_score else None,
+                        'h_index': stats.h_index,
+                    },
+                    'created': created,
+                }, status=status.HTTP_200_OK)
+            except Journal.DoesNotExist:
+                return Response({
+                    'error': f'Journal with ID {journal_id} does not exist'
+                }, status=status.HTTP_404_NOT_FOUND)
+        else:
+            # Recalculate for all journals
+            journals = Journal.objects.all()
+            total_journals = journals.count()
+            
+            success_count = 0
+            created_count = 0
+            error_count = 0
+            details = []
+            
+            for journal in journals:
+                try:
+                    # Create stats if missing
+                    stats, created = JournalStats.objects.get_or_create(journal=journal)
+                    if created:
+                        created_count += 1
+                    
+                    # Recalculate stats
+                    stats.update_stats()
+                    success_count += 1
+                    
+                    details.append({
+                        'id': journal.id,
+                        'title': journal.title,
+                        'total_articles': stats.total_articles,
+                        'total_issues': stats.total_issues,
+                        'total_citations': stats.total_citations,
+                        'impact_factor': str(stats.impact_factor) if stats.impact_factor else None,
+                        'cite_score': str(stats.cite_score) if stats.cite_score else None,
+                        'h_index': stats.h_index,
+                        'created': created,
+                    })
+                except Exception as e:
+                    error_count += 1
+                    details.append({
+                        'id': journal.id,
+                        'title': journal.title,
+                        'status': 'error',
+                        'error': str(e)
+                    })
+                    logger.exception(f"Error recalculating stats for journal {journal.id}")
+            
+            return Response({
+                'message': 'Stats recalculation completed',
+                'total_journals': total_journals,
+                'success_count': success_count,
+                'created_count': created_count,
+                'error_count': error_count,
+                'details': details,
+            }, status=status.HTTP_200_OK)

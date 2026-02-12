@@ -11,6 +11,9 @@ class PublicationsConfig(AppConfig):
         """
         import sys
         
+        # Import signals to register them
+        import publications.signals  # noqa
+        
         # Only start scheduler if running the server (not during migrations, etc.)
         if 'runserver' in sys.argv or 'gunicorn' in sys.argv[0]:
             try:

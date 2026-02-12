@@ -1875,14 +1875,14 @@ class PublicPublicationsListView(generics.ListAPIView):
         elif has_pdf and has_pdf.lower() in ['false', '0', 'no']:
             queryset = queryset.filter(Q(pdf_file='') | Q(pdf_file__isnull=True))
         
-        # Search by title, abstract, doi, journal name, co-authors, or publisher
+        # Search by title, abstract, doi, journal title, co-authors, or publisher
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
                 Q(title__icontains=search) |
                 Q(abstract__icontains=search) |
                 Q(doi__icontains=search) |
-                Q(journal__journal_name__icontains=search) |
+                Q(journal__title__icontains=search) |
                 Q(co_authors__icontains=search) |
                 Q(publisher__icontains=search) |
                 Q(author__full_name__icontains=search)
@@ -2402,25 +2402,50 @@ class PublicJournalDetailView(generics.RetrieveAPIView):
 class PublicJournalIssuesView(generics.ListAPIView):
     """
     List all issues for a specific journal (public access).
-    No authentication required.
+    No authentication required. Returns paginated results.
     """
     permission_classes = [AllowAny]
     serializer_class = IssueListSerializer
     
     def get_queryset(self):
         journal_pk = self.kwargs.get('journal_pk')
-        # Only return issues for active journals, ordered by publication date (newest first)
-        return Issue.objects.filter(
+        queryset = Issue.objects.filter(
             journal_id=journal_pk,
             journal__is_active=True
         ).select_related('journal').prefetch_related('articles').order_by(
             '-volume', '-issue_number', '-publication_date'
         )
+        
+        # Apply filters
+        # Filter by year
+        year = self.request.query_params.get('year', None)
+        if year:
+            queryset = queryset.filter(publication_date__year=year)
+        
+        # Filter by volume
+        volume = self.request.query_params.get('volume', None)
+        if volume:
+            queryset = queryset.filter(volume=volume)
+        
+        # Filter by status
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        # Search in title and description
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        return queryset
     
     @extend_schema(
         tags=['Public Journals'],
         summary='List Journal Issues (Public)',
-        description='Retrieve all issues for a specific journal. No authentication required. Returns issues ordered by volume and issue number (newest first).',
+        description='Retrieve paginated issues for a specific journal. No authentication required. Returns issues ordered by volume and issue number (newest first). Supports pagination, filtering by year, volume, status, and search.',
         parameters=[
             OpenApiParameter(
                 name='journal_pk',
@@ -2428,6 +2453,20 @@ class PublicJournalIssuesView(generics.ListAPIView):
                 location=OpenApiParameter.PATH,
                 description='Journal ID',
                 required=True,
+            ),
+            OpenApiParameter(
+                name='page',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Page number for pagination',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='page_size',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Number of results per page (default: 10)',
+                required=False,
             ),
             OpenApiParameter(
                 name='year',
@@ -2450,6 +2489,13 @@ class PublicJournalIssuesView(generics.ListAPIView):
                 description='Filter by status (draft, published, archived)',
                 required=False,
             ),
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search in title and description',
+                required=False,
+            ),
         ],
         responses={
             200: IssueListSerializer(many=True),
@@ -2464,27 +2510,8 @@ class PublicJournalIssuesView(generics.ListAPIView):
                 'error': 'Journal not found or not active'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Apply filters
-        queryset = self.get_queryset()
-        
-        # Filter by year
-        year = request.query_params.get('year', None)
-        if year:
-            queryset = queryset.filter(publication_date__year=year)
-        
-        # Filter by volume
-        volume = request.query_params.get('volume', None)
-        if volume:
-            queryset = queryset.filter(volume=volume)
-        
-        # Filter by status
-        status_filter = request.query_params.get('status', None)
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        
-        # Serialize and return
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        # Use the default list method which handles pagination automatically
+        return super().list(request, *args, **kwargs)
 
 
 class PublicJournalIssueDetailView(generics.RetrieveAPIView):

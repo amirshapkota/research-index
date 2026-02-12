@@ -14,6 +14,8 @@ from .views.views import (
     JournalStatsView,
     RefreshJournalStatsView,
     EditorialBoardListCreateView,
+    ExportJournalView,
+    ShareJournalView,
     # Issue views
     IssueListCreateView,
     IssueDetailView,
@@ -47,6 +49,9 @@ from .views.views import (
     # DOAJ views
     DOAJSearchView,
     DOAJJournalByISSNView,
+    # Admin views
+    SyncCitationsAdminView,
+    RecalculateStatsAdminView,
 )
 from .views.sync.views import sync_external_publications
 
@@ -59,6 +64,8 @@ urlpatterns = [
     # Public journals (no auth required)
     path('journals/public/', PublicJournalsListView.as_view(), name='public-journals-list'),
     path('journals/public/<int:pk>/', PublicJournalDetailView.as_view(), name='public-journal-detail'),
+    path('journals/public/<int:pk>/export/', ExportJournalView.as_view(), name='export-journal'),
+    path('journals/public/<int:pk>/share/', ShareJournalView.as_view(), name='share-journal'),
     path('journals/public/<int:journal_pk>/issues/', PublicJournalIssuesView.as_view(), name='public-journal-issues'),
     path('journals/public/<int:journal_pk>/issues/<int:pk>/', PublicJournalIssueDetailView.as_view(), name='public-journal-issue-detail'),
     path('journals/public/<int:journal_pk>/volumes/', PublicJournalVolumesView.as_view(), name='public-journal-volumes'),
@@ -147,4 +154,10 @@ urlpatterns = [
     # ==================== ADMIN ENDPOINTS ====================
     # Sync from external journal portal
     path('sync/', sync_external_publications, name='sync-external-publications'),
+    
+    # Admin: Sync citations from Crossref
+    path('admin/sync-citations/', SyncCitationsAdminView.as_view(), name='admin-sync-citations'),
+    
+    # Admin: Recalculate journal statistics
+    path('admin/recalculate-stats/', RecalculateStatsAdminView.as_view(), name='admin-recalculate-stats'),
 ]

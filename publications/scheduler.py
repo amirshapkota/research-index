@@ -47,6 +47,72 @@ def sync_external_publications_job():
         logger.exception(f"Error in scheduled publication sync: {e}")
 
 
+def sync_citations_job():
+    """
+    Job to sync citation counts from Crossref API.
+    Updates citation counts for publications with DOIs.
+    """
+    try:
+        logger.info("Starting scheduled citation sync from Crossref...")
+        
+        from publications.models import Publication, PublicationStats
+        from publications.services import CrossrefCitationAPI
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        api = CrossrefCitationAPI()
+        
+        # Get publications with DOIs that haven't been updated in the last 7 days
+        cutoff_date = timezone.now() - timedelta(days=7)
+        publications = Publication.objects.filter(
+            is_published=True,
+            doi__isnull=False
+        ).exclude(
+            doi=''
+        ).exclude(
+            stats__last_updated__gte=cutoff_date
+        ).select_related('stats')[:100]  # Limit to 100 per run to avoid overload
+        
+        success_count = 0
+        error_count = 0
+        updated_count = 0
+        
+        for publication in publications:
+            try:
+                citation_count = api.get_citation_count(publication.doi)
+                
+                if citation_count is not None:
+                    stats, created = PublicationStats.objects.get_or_create(
+                        publication=publication
+                    )
+                    
+                    old_count = stats.citations_count
+                    stats.citations_count = citation_count
+                    stats.save()
+                    
+                    success_count += 1
+                    if old_count != citation_count:
+                        updated_count += 1
+                        logger.info(
+                            f"Updated citations for '{publication.title[:50]}': "
+                            f"{old_count} → {citation_count}"
+                        )
+                else:
+                    error_count += 1
+                    
+            except Exception as e:
+                error_count += 1
+                logger.error(f"Error processing publication {publication.id}: {e}")
+        
+        logger.info(
+            f"Scheduled citation sync completed. "
+            f"Success: {success_count}, Updated: {updated_count}, Errors: {error_count}"
+        )
+        
+    except Exception as e:
+        logger.exception(f"Error in scheduled citation sync: {e}")
+
+
 @util.close_old_connections
 def delete_old_job_executions(max_age=604_800):
     """
@@ -79,6 +145,20 @@ def start_scheduler():
         name="Daily Publication Sync from External API",
     )
     logger.info(f"Scheduled publication sync daily at {hour:02d}:{minute:02d}")
+    
+    # Schedule daily citation sync from Crossref
+    citation_hour = getattr(settings, 'CITATION_SYNC_SCHEDULE_HOUR', 3)
+    citation_minute = getattr(settings, 'CITATION_SYNC_SCHEDULE_MINUTE', 0)
+    
+    scheduler.add_job(
+        sync_citations_job,
+        trigger=CronTrigger(hour=citation_hour, minute=citation_minute),
+        id="sync_citations_crossref",
+        max_instances=1,
+        replace_existing=True,
+        name="Daily Citation Sync from Crossref API",
+    )
+    logger.info(f"Scheduled citation sync daily at {citation_hour:02d}:{citation_minute:02d}")
     
     # Schedule cleanup of old job executions
     scheduler.add_job(

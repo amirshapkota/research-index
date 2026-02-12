@@ -239,6 +239,9 @@ CORS_ALLOW_CREDENTIALS = True  # Required for HTTP-only cookies
 #     'https://yourdomain.com',
 # ]
 
+# Frontend URL for generating shareable links
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+
 # CORS Headers
 CORS_ALLOW_HEADERS = [
     'accept',

@@ -17,6 +17,8 @@ from .views.views import (
     EditorialBoardDetailView,
     ExportJournalView,
     ShareJournalView,
+    ExportPublicationView,
+    SharePublicationView,
     # Issue views
     IssueListCreateView,
     IssueDetailView,
@@ -55,12 +57,20 @@ from .views.views import (
     RecalculateStatsAdminView,
 )
 from .views.sync.views import sync_external_publications
+from users.views.views import (
+    ExportAuthorView,
+    ShareAuthorView,
+    ExportInstitutionView,
+    ShareInstitutionView,
+)
 
 urlpatterns = [
     # ==================== PUBLIC ENDPOINTS ====================
     # Public publications (no auth required)
     path('public/', PublicPublicationsListView.as_view(), name='public-publications-list'),
     path('public/<int:pk>/', PublicPublicationDetailView.as_view(), name='public-publication-detail'),
+    path('public/<int:pk>/export/', ExportPublicationView.as_view(), name='export-publication'),
+    path('public/<int:pk>/share/', SharePublicationView.as_view(), name='share-publication'),
     
     # Public journals (no auth required)
     path('journals/public/', PublicJournalsListView.as_view(), name='public-journals-list'),
@@ -75,16 +85,16 @@ urlpatterns = [
     # Public institutions (no auth required)
     path('institutions/public/', PublicInstitutionsListView.as_view(), name='public-institutions-list'),
     path('institutions/public/<int:pk>/', PublicInstitutionDetailView.as_view(), name='public-institution-detail'),
+    path('institutions/public/<int:pk>/export/', ExportInstitutionView.as_view(), name='export-institution'),
+    path('institutions/public/<int:pk>/share/', ShareInstitutionView.as_view(), name='share-institution'),
+    path('institutions/public/<int:institution_pk>/publications/', PublicInstitutionPublicationsView.as_view(), name='public-institution-publications'),
     
     # Public authors (no auth required)
     path('authors/public/', PublicAuthorsListView.as_view(), name='public-authors-list'),
     path('authors/public/<int:pk>/', PublicAuthorDetailView.as_view(), name='public-author-detail'),
+    path('authors/public/<int:pk>/export/', ExportAuthorView.as_view(), name='export-author'),
+    path('authors/public/<int:pk>/share/', ShareAuthorView.as_view(), name='share-author'),
     path('authors/public/<int:author_pk>/publications/', PublicAuthorPublicationsView.as_view(), name='public-author-publications'),
-    
-    # Public institutions (no auth required)
-    path('institutions/public/', PublicInstitutionsListView.as_view(), name='public-institutions-list'),
-    path('institutions/public/<int:pk>/', PublicInstitutionDetailView.as_view(), name='public-institution-detail'),
-    path('institutions/public/<int:institution_pk>/publications/', PublicInstitutionPublicationsView.as_view(), name='public-institution-publications'),
     
     # ==================== TOPICS ====================
     # Topic CRUD

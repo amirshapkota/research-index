@@ -968,3 +968,419 @@ class RefreshAuthorStatsView(APIView):
                 'error': 'Author profile not found'
             }, status=status.HTTP_404_NOT_FOUND)
 
+
+# ==================== AUTHOR EXPORT/SHARE VIEWS ====================
+
+class ExportAuthorView(APIView):
+    """
+    Export author details in various formats (JSON, CSV, PDF).
+    Public endpoint - no authentication required.
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        from django.http import HttpResponse, JsonResponse
+        from django.views import View
+        from io import StringIO, BytesIO
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib import colors
+        import csv
+        import json
+        import re
+        
+        # Get the author
+        try:
+            author = Author.objects.select_related('user', 'stats').get(pk=pk)
+        except Author.DoesNotExist:
+            return Response({'error': 'Author not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get export format from query params (default: json)
+        export_format = request.GET.get('format', 'json').lower()
+        
+        # Create safe filename
+        safe_name = f"{author.first_name}_{author.last_name}" if author.first_name and author.last_name else f'author_{author.id}'
+        safe_filename = re.sub(r'[^\w\s-]', '', safe_name)
+        safe_filename = re.sub(r'[-\s]+', '_', safe_filename)
+        safe_filename = safe_filename.strip('_') or f'author_{author.id}'
+        
+        # Prepare author data
+        author_data = {
+            'id': author.id,
+            'title': author.title,
+            'first_name': author.first_name,
+            'middle_name': author.middle_name,
+            'last_name': author.last_name,
+            'full_name': author.full_name,
+            'designation': author.designation,
+            'institute': author.institute,
+            'email': author.email,
+            'phone': author.phone,
+            'bio': author.bio,
+            'research_interests': author.research_interests,
+            'orcid': author.orcid,
+            'google_scholar': author.google_scholar,
+            'researchgate': author.researchgate,
+            'linkedin': author.linkedin,
+            'website': author.website,
+        }
+        
+        # Add stats if available
+        if hasattr(author, 'stats'):
+            author_data.update({
+                'h_index': author.stats.h_index,
+                'i10_index': author.stats.i10_index,
+                'total_citations': author.stats.total_citations,
+                'total_reads': author.stats.total_reads,
+                'total_downloads': author.stats.total_downloads,
+            })
+        
+        # Handle different export formats
+        if export_format == 'json':
+            response = JsonResponse(author_data, json_dumps_params={'indent': 2})
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.json"'
+            return response
+            
+        elif export_format == 'csv':
+            output = StringIO()
+            writer = csv.writer(output)
+            writer.writerow(['Field', 'Value'])
+            for key, value in author_data.items():
+                writer.writerow([key, value])
+            
+            response = HttpResponse(output.getvalue(), content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.csv"'
+            return response
+            
+        elif export_format == 'pdf':
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter)
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                spaceAfter=30,
+            )
+            
+            heading_style = ParagraphStyle(
+                'CustomHeading',
+                parent=styles['Heading2'],
+                fontSize=12,
+                spaceAfter=12,
+            )
+            
+            elements.append(Paragraph("AUTHOR PROFILE EXPORT", title_style))
+            elements.append(Spacer(1, 0.2 * inch))
+            
+            elements.append(Paragraph("Author Information", heading_style))
+            data = [
+                ['Name:', author.full_name or 'N/A'],
+                ['Title:', author.title or 'N/A'],
+                ['Designation:', author.designation or 'N/A'],
+                ['Institute:', author.institute or 'N/A'],
+                ['Email:', author.email or 'N/A'],
+                ['ORCID:', author.orcid or 'N/A'],
+                ['Google Scholar:', author.google_scholar or 'N/A'],
+            ]
+            
+            table = Table(data, colWidths=[2*inch, 4*inch])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(table)
+            
+            if hasattr(author, 'stats'):
+                elements.append(Spacer(1, 0.3 * inch))
+                elements.append(Paragraph("Research Metrics", heading_style))
+                stats_data = [
+                    ['H-Index:', str(author.stats.h_index)],
+                    ['i10-Index:', str(author.stats.i10_index)],
+                    ['Total Citations:', str(author.stats.total_citations)],
+                ]
+                stats_table = Table(stats_data, colWidths=[2*inch, 4*inch])
+                stats_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ]))
+                elements.append(stats_table)
+            
+            if author.bio:
+                elements.append(Spacer(1, 0.3 * inch))
+                elements.append(Paragraph("Biography", heading_style))
+                bio_text = author.bio.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                elements.append(Paragraph(bio_text, styles['Normal']))
+            
+            doc.build(elements)
+            pdf_data = buffer.getvalue()
+            buffer.close()
+            
+            response = HttpResponse(pdf_data, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.pdf"'
+            return response
+        else:
+            return Response(
+                {'error': 'Invalid format. Supported formats: json, csv, pdf'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class ShareAuthorView(APIView):
+    """
+    Generate shareable link and metadata for author profile.
+    Public endpoint - no authentication required.
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        try:
+            author = Author.objects.select_related('stats').get(pk=pk)
+        except Author.DoesNotExist:
+            return Response({'error': 'Author not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        from django.conf import settings
+        frontend_base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        frontend_url = f"{frontend_base_url}/authors/{pk}"
+        
+        # Get profile picture URL if available
+        profile_pic_url = None
+        if author.profile_picture:
+            try:
+                profile_pic_url = request.build_absolute_uri(author.profile_picture.url)
+            except Exception:
+                profile_pic_url = None
+        
+        share_data = {
+            'url': frontend_url,
+            'title': f"{author.title} {author.full_name}" if author.title else author.full_name,
+            'description': author.bio[:200] if author.bio else f"Researcher at {author.institute}" if author.institute else "Researcher Profile",
+            'image': profile_pic_url,
+            'metadata': {
+                'designation': author.designation,
+                'institute': author.institute,
+                'h_index': author.stats.h_index if hasattr(author, 'stats') else None,
+                'total_citations': author.stats.total_citations if hasattr(author, 'stats') else None,
+                'orcid': author.orcid,
+            },
+            'social_share_urls': {
+                'twitter': f"https://twitter.com/intent/tweet?url={frontend_url}&text={author.full_name}",
+                'facebook': f"https://www.facebook.com/sharer/sharer.php?u={frontend_url}",
+                'linkedin': f"https://www.linkedin.com/sharing/share-offsite/?url={frontend_url}",
+                'whatsapp': f"https://wa.me/?text={author.full_name}%20{frontend_url}",
+                'email': f"mailto:?subject={author.full_name}&body=Check out this author profile: {frontend_url}",
+            }
+        }
+        
+        return Response(share_data, status=status.HTTP_200_OK)
+
+
+class ExportInstitutionView(APIView):
+    """
+    Export institution details in various formats (JSON, CSV, PDF).
+    Public endpoint - no authentication required.
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        from django.http import HttpResponse, JsonResponse
+        from io import StringIO, BytesIO
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib import colors
+        import csv
+        import json
+        import re
+        
+        # Get the institution
+        try:
+            institution = Institution.objects.select_related('user', 'stats').get(pk=pk)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get export format from query params (default: json)
+        export_format = request.GET.get('format', 'json').lower()
+        
+        # Create safe filename
+        safe_name = institution.institution_name if institution.institution_name else f'institution_{institution.id}'
+        safe_filename = re.sub(r'[^\w\s-]', '', safe_name)
+        safe_filename = re.sub(r'[-\s]+', '_', safe_filename)
+        safe_filename = safe_filename.strip('_') or f'institution_{institution.id}'
+        
+        # Prepare institution data
+        institution_data = {
+            'id': institution.id,
+            'institution_name': institution.institution_name,
+            'institution_type': institution.institution_type,
+            'description': institution.description,
+            'established_year': institution.established_year,
+            'address': institution.address,
+            'city': institution.city,
+            'state': institution.state,
+            'country': institution.country,
+            'postal_code': institution.postal_code,
+            'email': institution.email,
+            'phone': institution.phone,
+            'website': institution.website,
+            'research_areas': institution.research_areas,
+        }
+        
+        # Add stats if available
+        if hasattr(institution, 'stats'):
+            institution_data.update({
+                'h_index': institution.stats.h_index,
+                'i10_index': institution.stats.i10_index,
+                'total_citations': institution.stats.total_citations,
+            })
+        
+        # Handle different export formats
+        if export_format == 'json':
+            response = JsonResponse(institution_data, json_dumps_params={'indent': 2})
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.json"'
+            return response
+            
+        elif export_format == 'csv':
+            output = StringIO()
+            writer = csv.writer(output)
+            writer.writerow(['Field', 'Value'])
+            for key, value in institution_data.items():
+                writer.writerow([key, value])
+            
+            response = HttpResponse(output.getvalue(), content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.csv"'
+            return response
+            
+        elif export_format == 'pdf':
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter)
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                spaceAfter=30,
+            )
+            
+            heading_style = ParagraphStyle(
+                'CustomHeading',
+                parent=styles['Heading2'],
+                fontSize=12,
+                spaceAfter=12,
+            )
+            
+            elements.append(Paragraph("INSTITUTION PROFILE EXPORT", title_style))
+            elements.append(Spacer(1, 0.2 * inch))
+            
+            elements.append(Paragraph("Institution Information", heading_style))
+            data = [
+                ['Name:', institution.institution_name or 'N/A'],
+                ['Type:', institution.institution_type or 'N/A'],
+                ['Established:', str(institution.established_year) if institution.established_year else 'N/A'],
+                ['City:', institution.city or 'N/A'],
+                ['Country:', institution.country or 'N/A'],
+                ['Email:', institution.email or 'N/A'],
+                ['Website:', institution.website or 'N/A'],
+            ]
+            
+            table = Table(data, colWidths=[2*inch, 4*inch])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(table)
+            
+            if hasattr(institution, 'stats'):
+                elements.append(Spacer(1, 0.3 * inch))
+                elements.append(Paragraph("Research Metrics", heading_style))
+                stats_data = [
+                    ['H-Index:', str(institution.stats.h_index)],
+                    ['i10-Index:', str(institution.stats.i10_index)],
+                    ['Total Citations:', str(institution.stats.total_citations)],
+                ]
+                stats_table = Table(stats_data, colWidths=[2*inch, 4*inch])
+                stats_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ]))
+                elements.append(stats_table)
+            
+            if institution.description:
+                elements.append(Spacer(1, 0.3 * inch))
+                elements.append(Paragraph("Description", heading_style))
+                desc_text = institution.description.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                elements.append(Paragraph(desc_text, styles['Normal']))
+            
+            doc.build(elements)
+            pdf_data = buffer.getvalue()
+            buffer.close()
+            
+            response = HttpResponse(pdf_data, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.pdf"'
+            return response
+        else:
+            return Response(
+                {'error': 'Invalid format. Supported formats: json, csv, pdf'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class ShareInstitutionView(APIView):
+    """
+    Generate shareable link and metadata for institution profile.
+    Public endpoint - no authentication required.
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        try:
+            institution = Institution.objects.select_related('stats').get(pk=pk)
+        except Institution.DoesNotExist:
+            return Response({'error': 'Institution not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        from django.conf import settings
+        frontend_base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        frontend_url = f"{frontend_base_url}/institutions/{pk}"
+        
+        share_data = {
+            'url': frontend_url,
+            'title': institution.institution_name,
+            'description': institution.description[:200] if institution.description else f"{institution.institution_type} in {institution.city}, {institution.country}",
+            'metadata': {
+                'type': institution.institution_type,
+                'city': institution.city,
+                'country': institution.country,
+                'established': institution.established_year,
+                'h_index': institution.stats.h_index if hasattr(institution, 'stats') else None,
+                'total_citations': institution.stats.total_citations if hasattr(institution, 'stats') else None,
+            },
+            'social_share_urls': {
+                'twitter': f"https://twitter.com/intent/tweet?url={frontend_url}&text={institution.institution_name}",
+                'facebook': f"https://www.facebook.com/sharer/sharer.php?u={frontend_url}",
+                'linkedin': f"https://www.linkedin.com/sharing/share-offsite/?url={frontend_url}",
+                'whatsapp': f"https://wa.me/?text={institution.institution_name}%20{frontend_url}",
+                'email': f"mailto:?subject={institution.institution_name}&body=Check out this institution: {frontend_url}",
+            }
+        }
+        
+        return Response(share_data, status=status.HTTP_200_OK)
+

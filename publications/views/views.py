@@ -4282,3 +4282,182 @@ class RecalculateStatsAdminView(APIView):
                 'error_count': error_count,
                 'details': details,
             }, status=status.HTTP_200_OK)
+
+
+# ==================== PUBLICATION EXPORT/SHARE VIEWS ====================
+
+class ExportPublicationView(View):
+    """
+    Export publication details in various formats (JSON, CSV, PDF).
+    Public endpoint - no authentication required.
+    """
+    
+    def get(self, request, pk):
+        import csv
+        import json
+        from io import StringIO
+        
+        # Get the publication
+        try:
+            publication = Publication.objects.select_related(
+                'author', 'journal'
+            ).prefetch_related('mesh_terms').get(pk=pk)
+        except Publication.DoesNotExist:
+            return JsonResponse({'error': 'Publication not found'}, status=404)
+        
+        # Get export format from query params (default: json)
+        export_format = request.GET.get('format', 'json').lower()
+        
+        # Create safe filename
+        import re
+        safe_title = publication.title[:50] if publication.title else f'publication_{publication.id}'
+        safe_filename = re.sub(r'[^\w\s-]', '', safe_title)
+        safe_filename = re.sub(r'[-\s]+', '_', safe_filename)
+        safe_filename = safe_filename.strip('_') or f'publication_{publication.id}'
+        
+        # Prepare publication data
+        publication_data = {
+            'id': publication.id,
+            'title': publication.title,
+            'abstract': publication.abstract,
+            'author_name': publication.author_name,
+            'co_authors': publication.co_authors,
+            'journal_name': publication.journal.title if publication.journal else '',
+            'doi': publication.doi,
+            'pubmed_id': publication.pubmed_id,
+            'pmc_id': publication.pmc_id,
+            'published_date': publication.published_date.isoformat() if publication.published_date else None,
+            'keywords': publication.keywords,
+            'pdf_url': publication.pdf_url,
+            'article_type': publication.get_article_type_display() if publication.article_type else None,
+        }
+        
+        # Add stats if available
+        if hasattr(publication, 'stats'):
+            publication_data.update({
+                'citations_count': publication.stats.citations_count,
+                'reads_count': publication.stats.reads_count,
+                'downloads_count': publication.stats.downloads_count,
+            })
+        
+        # Handle different export formats
+        if export_format == 'json':
+            response = JsonResponse(publication_data, json_dumps_params={'indent': 2})
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.json"'
+            return response
+            
+        elif export_format == 'csv':
+            output = StringIO()
+            writer = csv.writer(output)
+            writer.writerow(['Field', 'Value'])
+            for key, value in publication_data.items():
+                writer.writerow([key, value])
+            
+            response = HttpResponse(output.getvalue(), content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.csv"'
+            return response
+            
+        elif export_format == 'pdf':
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter)
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                spaceAfter=30,
+            )
+            
+            heading_style = ParagraphStyle(
+                'CustomHeading',
+                parent=styles['Heading2'],
+                fontSize=12,
+                spaceAfter=12,
+            )
+            
+            elements.append(Paragraph("PUBLICATION EXPORT REPORT", title_style))
+            elements.append(Spacer(1, 0.2 * inch))
+            
+            # Basic info
+            elements.append(Paragraph("Publication Information", heading_style))
+            data = [
+                ['Title:', publication.title or 'N/A'],
+                ['Authors:', publication.author_name or 'N/A'],
+                ['Co-Authors:', publication.co_authors or 'N/A'],
+                ['Journal:', publication.journal.title if publication.journal else 'N/A'],
+                ['DOI:', publication.doi or 'N/A'],
+                ['PubMed ID:', publication.pubmed_id or 'N/A'],
+                ['Published Date:', str(publication.published_date) if publication.published_date else 'N/A'],
+            ]
+            
+            table = Table(data, colWidths=[2*inch, 4*inch])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(table)
+            elements.append(Spacer(1, 0.3 * inch))
+            
+            # Abstract
+            if publication.abstract:
+                elements.append(Paragraph("Abstract", heading_style))
+                abstract_text = publication.abstract.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                elements.append(Paragraph(abstract_text, styles['Normal']))
+            
+            doc.build(elements)
+            pdf_data = buffer.getvalue()
+            buffer.close()
+            
+            response = HttpResponse(pdf_data, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{safe_filename}.pdf"'
+            return response
+        else:
+            return JsonResponse(
+                {'error': 'Invalid format. Supported formats: json, csv, pdf'},
+                status=400
+            )
+
+
+class SharePublicationView(APIView):
+    """
+    Generate shareable link and metadata for publication.
+    Public endpoint - no authentication required.
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        try:
+            publication = Publication.objects.select_related('author', 'journal').get(pk=pk)
+        except Publication.DoesNotExist:
+            return Response({'error': 'Publication not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        from django.conf import settings
+        frontend_base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        frontend_url = f"{frontend_base_url}/articles/{pk}"
+        
+        share_data = {
+            'url': frontend_url,
+            'title': publication.title,
+            'description': publication.abstract[:200] if publication.abstract else f"Publication by {publication.author_name}",
+            'metadata': {
+                'doi': publication.doi,
+                'pubmed_id': publication.pubmed_id,
+                'author': publication.author_name,
+                'journal': publication.journal.title if publication.journal else None,
+                'published_date': publication.published_date.isoformat() if publication.published_date else None,
+            },
+            'social_share_urls': {
+                'twitter': f"https://twitter.com/intent/tweet?url={frontend_url}&text={publication.title}",
+                'facebook': f"https://www.facebook.com/sharer/sharer.php?u={frontend_url}",
+                'linkedin': f"https://www.linkedin.com/sharing/share-offsite/?url={frontend_url}",
+                'whatsapp': f"https://wa.me/?text={publication.title}%20{frontend_url}",
+                'email': f"mailto:?subject={publication.title}&body=Check out this publication: {frontend_url}",
+            }
+        }
+        
+        return Response(share_data, status=status.HTTP_200_OK)

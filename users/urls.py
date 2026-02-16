@@ -13,7 +13,11 @@ from .views.views import (
     AccountStatusView,
     DeactivateAccountView,
     DeleteAccountView,
-    RefreshAuthorStatsView
+    RefreshAuthorStatsView,
+    ExportAuthorView,
+    ShareAuthorView,
+    ExportInstitutionView,
+    ShareInstitutionView,
 )
 from .views.claim.author.views import (
     SearchImportedAuthorsView,

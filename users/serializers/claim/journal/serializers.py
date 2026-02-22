@@ -237,3 +237,115 @@ class ClaimJournalsWithInstitutionSerializer(serializers.Serializer):
                 'journals_claimed': journals.count(),
                 'journal_titles': list(journals.values_list('title', flat=True))
             }
+
+
+class ClaimJournalsWithLoginSerializer(serializers.Serializer):
+    """
+    Serializer for claiming journals by logging in with existing credentials.
+    This allows existing institutions to claim additional journals.
+    """
+    # Login credentials
+    email = serializers.EmailField(
+        required=True,
+        help_text="Email address of existing institution account"
+    )
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        style={'input_type': 'password'},
+        help_text="Password for the account"
+    )
+    
+    # Journals to claim
+    journal_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=True,
+        allow_empty=False,
+        help_text="List of journal IDs to claim"
+    )
+    
+    def validate(self, data):
+        """Validate the login and claim request."""
+        from django.contrib.auth import authenticate
+        
+        # Authenticate user
+        user = authenticate(
+            username=data['email'],
+            password=data['password']
+        )
+        
+        if not user:
+            raise serializers.ValidationError({
+                'email': 'Invalid email or password'
+            })
+        
+        # Check if user is an institution
+        if user.user_type != 'institution':
+            raise serializers.ValidationError({
+                'email': 'Only institutions can claim journals'
+            })
+        
+        # Check if user is active
+        if not user.is_active:
+            raise serializers.ValidationError({
+                'email': 'Your account is inactive. Please contact support.'
+            })
+        
+        # Get institution profile
+        try:
+            institution = Institution.objects.get(user=user)
+        except Institution.DoesNotExist:
+            raise serializers.ValidationError({
+                'email': 'Institution profile not found'
+            })
+        
+        # Validate all journals exist and can be claimed
+        journal_ids = data['journal_ids']
+        journals = Journal.objects.filter(id__in=journal_ids)
+        
+        if journals.count() != len(journal_ids):
+            found_ids = set(journals.values_list('id', flat=True))
+            missing_ids = set(journal_ids) - found_ids
+            raise serializers.ValidationError({
+                'journal_ids': f'Journals not found: {list(missing_ids)}'
+            })
+        
+        # Check all journals can be claimed
+        for journal in journals:
+            # Check if institution already owns this journal
+            if journal.institution == institution:
+                raise serializers.ValidationError({
+                    'journal_ids': f'You already own "{journal.title}"'
+                })
+            
+            if journal.institution.user.is_active:
+                raise serializers.ValidationError({
+                    'journal_ids': f'Journal "{journal.title}" is already owned by another active institution'
+                })
+            
+            if 'system.institution' not in journal.institution.user.email:
+                raise serializers.ValidationError({
+                    'journal_ids': f'Journal "{journal.title}" cannot be claimed through this process'
+                })
+        
+        data['user'] = user
+        data['institution'] = institution
+        data['journals'] = journals
+        return data
+    
+    def save(self):
+        """Claim journals for the existing institution."""
+        with transaction.atomic():
+            institution = self.validated_data['institution']
+            user = self.validated_data['user']
+            journals = self.validated_data['journals']
+            
+            # Transfer all journals to the institution
+            journals.update(institution=institution)
+            
+            return {
+                'user': user,
+                'institution': institution,
+                'journals_claimed': journals.count(),
+                'journal_titles': list(journals.values_list('title', flat=True))
+            }

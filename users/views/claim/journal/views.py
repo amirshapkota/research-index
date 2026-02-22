@@ -160,6 +160,15 @@ class ClaimJournalsWithInstitutionView(APIView):
             },
             'journals_claimed': result['journals_claimed'],
             'journal_titles': result['journal_titles'],
+            'tokens': {
+                'access': access_token,
+            },
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'user_type': user.user_type,
+                'institution_name': institution.institution_name,
+            }
         }, status=status.HTTP_201_CREATED)
         
         # Set HTTP-only cookies for auto-login
@@ -307,3 +316,99 @@ class ListMyJournalsView(APIView):
             'count': journals.count(),
             'journals': results
         }, status=status.HTTP_200_OK)
+
+
+class ClaimJournalsWithLoginView(APIView):
+    """
+    Claim journals by logging in with existing institution credentials.
+    This allows existing institutions to claim additional journals without needing
+    to log out and use the separate "claim additional journal" endpoint.
+    """
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        tags=['Journal Claiming'],
+        summary='Login & Claim Journals',
+        description='Claim journals by logging in with existing institution credentials. This is a convenient way for existing institutions to claim multiple journals at once without needing to be already logged in.',
+        request={
+            'type': 'object',
+            'required': ['email', 'password', 'journal_ids'],
+            'properties': {
+                'email': {'type': 'string', 'format': 'email'},
+                'password': {'type': 'string', 'format': 'password'},
+                'journal_ids': {
+                    'type': 'array',
+                    'items': {'type': 'integer'}
+                }
+            }
+        },
+        examples=[
+            OpenApiExample(
+                'Login and Claim Journals',
+                value={
+                    'email': 'admin@university.edu',
+                    'password': 'SecurePass123!',
+                    'journal_ids': [6, 7, 12]
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='Journals claimed successfully',
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'message': {'type': 'string'},
+                        'institution': {'type': 'object'},
+                        'journals_claimed': {'type': 'integer'},
+                        'journal_titles': {'type': 'array'},
+                    }
+                }
+            ),
+            400: OpenApiResponse(description='Invalid credentials or journals cannot be claimed'),
+            403: OpenApiResponse(description='Only institutions can claim journals'),
+        }
+    )
+    def post(self, request):
+        from ....serializers.claim.journal.serializers import ClaimJournalsWithLoginSerializer
+        
+        serializer = ClaimJournalsWithLoginSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Claim journals
+        result = serializer.save()
+        user = result['user']
+        institution = result['institution']
+        
+        # Generate JWT tokens for auto-login
+        tokens = user.tokens()
+        access_token = tokens['access']
+        refresh_token = tokens['refresh']
+        
+        response = Response({
+            'message': f'Successfully claimed {result["journals_claimed"]} journal(s)',
+            'institution': {
+                'id': institution.id,
+                'name': institution.institution_name,
+                'email': user.email,
+            },
+            'journals_claimed': result['journals_claimed'],
+            'journal_titles': result['journal_titles'],
+            'tokens': {
+                'access': access_token,
+            },
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'user_type': user.user_type,
+                'institution_name': institution.institution_name,
+            }
+        }, status=status.HTTP_200_OK)
+        
+        # Set HTTP-only cookies for auto-login
+        set_auth_cookies(response, access_token, refresh_token)
+        
+        return response

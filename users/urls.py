@@ -26,6 +26,7 @@ from .views.claim.author.views import (
 from .views.claim.journal.views import (
     SearchClaimableJournalsView,
     ClaimJournalsWithInstitutionView,
+    ClaimJournalsWithLoginView,
     ClaimJournalView,
     ListMyJournalsView,
 )
@@ -58,6 +59,7 @@ urlpatterns = [
     # Primary way to create institution accounts is by claiming journals
     path('journals/claim/search/', SearchClaimableJournalsView.as_view(), name='journal-claim-search'),
     path('journals/claim/create-institution/', ClaimJournalsWithInstitutionView.as_view(), name='claim-journals-create-institution'),
+    path('journals/claim/with-login/', ClaimJournalsWithLoginView.as_view(), name='claim-journals-with-login'),
     path('journals/claim/add/', ClaimJournalView.as_view(), name='claim-additional-journal'),  # For existing institutions
     path('journals/my-journals/', ListMyJournalsView.as_view(), name='my-journals'),
     
